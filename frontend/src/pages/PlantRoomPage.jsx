@@ -2,8 +2,9 @@ import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { api } from "../api";
 import EditableTable from "../components/EditableTable";
+import SiteMap from "../components/SiteMap";
 
-const TABS = ["Settings", "Walls", "Roofs", "Floors", "Volume", "Building Fabric Improvements", "Results"];
+const TABS = ["Settings", "Site Map", "Walls", "Roofs", "Floors", "Volume", "Building Fabric Improvements", "Results"];
 
 function fmt(n, dp = 2) {
   if (n === null || n === undefined || Number.isNaN(n)) return "-";
@@ -19,6 +20,7 @@ function roofLightAreaByRoof(rooflights, roofId) {
 export default function PlantRoomPage() {
   const { roomId } = useParams();
   const [room, setRoom] = useState(null);
+  const [project, setProject] = useState(null);
   const [measures, setMeasures] = useState([]);
   const [ageBands, setAgeBands] = useState([]);
   const [results, setResults] = useState(null);
@@ -31,6 +33,7 @@ export default function PlantRoomPage() {
       setRoom(r);
       setMeasures(m);
       setAgeBands(a);
+      setProject(await api.getProject(r.project_id));
     } catch (e) {
       setError(e.message);
     }
@@ -154,6 +157,16 @@ export default function PlantRoomPage() {
       </div>
 
       {tab === "Settings" && <SettingsTab room={room} onSave={refreshAll} />}
+
+      {tab === "Site Map" && (
+        <div className="tab-panel">
+          {project ? (
+            <SiteMap project={project} room={room} ageBands={ageBands} elementApi={elementApi} refreshAll={refreshAll} />
+          ) : (
+            "Loading map..."
+          )}
+        </div>
+      )}
 
       {tab === "Walls" && (
         <div className="tab-panel">

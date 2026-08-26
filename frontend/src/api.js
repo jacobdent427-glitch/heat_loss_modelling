@@ -26,6 +26,7 @@ export const api = {
   updateProject: (id, data) => request(`/projects/${id}`, { method: "PUT", body: JSON.stringify(data) }),
   deleteProject: (id) => request(`/projects/${id}`, { method: "DELETE" }),
   getProjectOverview: (id) => request(`/projects/${id}/overview`),
+  geocode: (address) => request(`/geocode?address=${encodeURIComponent(address)}`),
 
   listPlantRooms: (projectId) => request(`/projects/${projectId}/plant-rooms`),
   createPlantRoom: (projectId, data) =>

@@ -8,11 +8,11 @@ ELEMENT_TYPES = {
     "walls": (WallElement, [
         "location", "construction", "reference", "height", "width", "window_pct", "window_frame_type",
         "age_band_id", "wall_u_value", "window_u_value", "proposed_wall_u_value", "proposed_window_u_value",
-        "wall_measure_id", "window_measure_id", "notes",
+        "wall_measure_id", "window_measure_id", "geometry", "notes",
     ]),
     "roofs": (RoofElement, [
         "location", "construction", "reference", "roof_type", "has_loft", "area", "age_band_id", "u_value",
-        "proposed_u_value", "measure_id", "notes",
+        "proposed_u_value", "measure_id", "geometry", "notes",
     ]),
     "rooflights": (RoofLightElement, [
         "roof_id", "location", "construction", "reference", "height", "width", "qty", "u_value",
@@ -20,7 +20,7 @@ ELEMENT_TYPES = {
     ]),
     "floors": (FloorElement, [
         "location", "construction", "reference", "area", "age_band_id", "u_value", "proposed_u_value",
-        "measure_id", "notes",
+        "measure_id", "geometry", "notes",
     ]),
     "doors": (DoorElement, [
         "location", "construction", "reference", "door_type", "height", "width", "qty", "age_band_id", "u_value",

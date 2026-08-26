@@ -12,6 +12,8 @@ class Project(db.Model):
     name = db.Column(db.String(200), nullable=False)
     address = db.Column(db.String(300))
     notes = db.Column(db.Text)
+    latitude = db.Column(db.Float)
+    longitude = db.Column(db.Float)
     created_at = db.Column(db.DateTime, default=utcnow)
     updated_at = db.Column(db.DateTime, default=utcnow, onupdate=utcnow)
 
@@ -25,6 +27,8 @@ class Project(db.Model):
             "name": self.name,
             "address": self.address,
             "notes": self.notes,
+            "latitude": self.latitude,
+            "longitude": self.longitude,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
             "plant_room_count": len(self.plant_rooms),
@@ -260,6 +264,11 @@ class WallElement(db.Model):
     wall_measure_id = db.Column(db.Integer, db.ForeignKey("improvement_measure.id"))
     window_measure_id = db.Column(db.Integer, db.ForeignKey("improvement_measure.id"))
 
+    # Drawn wall line on the site map, as a list of [lat, lng] points. Its
+    # measured length feeds `width` (the plan-view run) - height still has
+    # to be surveyed, a satellite view can't see it.
+    geometry = db.Column(db.JSON)
+
     notes = db.Column(db.Text)
 
     def to_dict(self):
@@ -280,6 +289,7 @@ class WallElement(db.Model):
             "proposed_window_u_value": self.proposed_window_u_value,
             "wall_measure_id": self.wall_measure_id,
             "window_measure_id": self.window_measure_id,
+            "geometry": self.geometry,
             "notes": self.notes,
         }
 
@@ -300,6 +310,10 @@ class RoofElement(db.Model):
     proposed_u_value = db.Column(db.Float)
     measure_id = db.Column(db.Integer, db.ForeignKey("improvement_measure.id"))
 
+    # Drawn roof outline on the site map, as a list of [lat, lng] points.
+    # Its measured area feeds `area` directly.
+    geometry = db.Column(db.JSON)
+
     notes = db.Column(db.Text)
 
     def to_dict(self):
@@ -311,6 +325,7 @@ class RoofElement(db.Model):
             "reference": self.reference,
             "roof_type": self.roof_type,
             "has_loft": self.has_loft,
+            "geometry": self.geometry,
             "area": self.area,
             "age_band_id": self.age_band_id,
             "u_value": self.u_value,
@@ -376,6 +391,10 @@ class FloorElement(db.Model):
     proposed_u_value = db.Column(db.Float)
     measure_id = db.Column(db.Integer, db.ForeignKey("improvement_measure.id"))
 
+    # Drawn floor outline on the site map (usually copied from the roof
+    # above it via "Copy areas from roofs" instead of drawn separately).
+    geometry = db.Column(db.JSON)
+
     notes = db.Column(db.Text)
 
     def to_dict(self):
@@ -390,6 +409,7 @@ class FloorElement(db.Model):
             "u_value": self.u_value,
             "proposed_u_value": self.proposed_u_value,
             "measure_id": self.measure_id,
+            "geometry": self.geometry,
             "notes": self.notes,
         }
 

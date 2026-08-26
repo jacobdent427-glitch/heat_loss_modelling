@@ -32,7 +32,7 @@ def get_project(project_id):
 def update_project(project_id):
     project = db.get_or_404(Project, project_id)
     data = request.get_json(force=True) or {}
-    for field in ("name", "address", "notes"):
+    for field in ("name", "address", "notes", "latitude", "longitude"):
         if field in data:
             setattr(project, field, data[field])
     db.session.commit()
