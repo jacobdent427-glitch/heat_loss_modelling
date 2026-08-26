@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useJsApiLoader, GoogleMap, Polygon, Polyline } from "@react-google-maps/api";
+import { useJsApiLoader, GoogleMap, Polygon, Polyline, Marker } from "@react-google-maps/api";
 import { api } from "../api";
 
 const GOOGLE_LIBRARIES = ["geometry"];
@@ -19,6 +19,20 @@ const MAP_OPTIONS = {
 
 function toLatLngLiterals(pairs) {
   return pairs.map(([lat, lng]) => ({ lat, lng }));
+}
+
+// Small dot marking exactly where a drawn vertex landed. Built lazily (not a
+// module-level constant) since it needs window.google.maps, which only
+// exists once the script has loaded.
+function vertexIcon() {
+  return {
+    path: window.google.maps.SymbolPath.CIRCLE,
+    scale: 6,
+    fillColor: "#ff2d55",
+    fillOpacity: 1,
+    strokeColor: "#ffffff",
+    strokeWeight: 2,
+  };
 }
 
 function polylineLengthMetres(points) {
@@ -221,12 +235,18 @@ export default function SiteMap({ project, room, ageBands, elementApi, refreshAl
             {(drawMode === "roof" || drawMode === "floor") && drawPoints.length > 0 && (
               <Polygon path={drawPoints} options={{ fillColor: "#ff2d55", strokeColor: "#ff2d55", fillOpacity: 0.3 }} />
             )}
+            {drawMode &&
+              drawPoints.map((p, i) => (
+                <Marker key={`draw-pt-${i}`} position={p} icon={vertexIcon()} title={`Point ${i + 1}`} />
+              ))}
             {finishedShape &&
               (finishedShape.type === "wall" ? (
                 <Polyline path={finishedShape.points} options={{ strokeColor: "#ff2d55", strokeWeight: 5 }} />
               ) : finishedShape.points.length > 0 ? (
                 <Polygon path={finishedShape.points} options={{ fillColor: "#ff2d55", strokeColor: "#ff2d55", fillOpacity: 0.3 }} />
               ) : null)}
+            {finishedShape &&
+              finishedShape.points.map((p, i) => <Marker key={`finished-pt-${i}`} position={p} icon={vertexIcon()} />)}
           </GoogleMap>
         </div>
 
