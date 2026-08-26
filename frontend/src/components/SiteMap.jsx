@@ -6,6 +6,16 @@ const GOOGLE_LIBRARIES = ["geometry"];
 const DEFAULT_CENTER = { lat: 51.5074, lng: -0.1278 }; // London - used only until the project's address geocodes
 const MAP_CONTAINER_STYLE = { width: "100%", height: "600px" };
 const LAYER_COLORS = { wall: "#e8a543", roof: "#3388ff", floor: "#2ecc71" };
+// Defined once at module scope (not inline in JSX) so it's never a "new" object
+// on re-render - a fresh object every render can cause the map to re-apply
+// options and fight with the mapTypeId. mapTypeId lives in the options object
+// itself (the most reliable place for it) as well as the mapTypeId prop.
+const MAP_OPTIONS = {
+  mapTypeId: "satellite",
+  streetViewControl: false,
+  mapTypeControl: true,
+  fullscreenControl: false,
+};
 
 function toLatLngLiterals(pairs) {
   return pairs.map(([lat, lng]) => ({ lat, lng }));
@@ -170,7 +180,7 @@ export default function SiteMap({ project, room, ageBands, elementApi, refreshAl
             zoom={20}
             mapTypeId="satellite"
             onClick={handleMapClick}
-            options={{ streetViewControl: false, mapTypeControl: false, fullscreenControl: false }}
+            options={MAP_OPTIONS}
           >
             {visible.wall &&
               room.walls
@@ -179,7 +189,7 @@ export default function SiteMap({ project, room, ageBands, elementApi, refreshAl
                   <Polyline
                     key={`wall-${w.id}`}
                     path={toLatLngLiterals(w.geometry)}
-                    options={{ strokeColor: LAYER_COLORS.wall, strokeWeight: 4 }}
+                    options={{ strokeColor: LAYER_COLORS.wall, strokeWeight: 6, strokeOpacity: 1, zIndex: 10 }}
                   />
                 ))}
 
