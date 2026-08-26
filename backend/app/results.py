@@ -67,12 +67,25 @@ def _element_entries(plant_room):
                 "measure_id": w.window_measure_id,
             })
 
+    # A roof's entered area is its full footprint (same as the floor below
+    # it); any rooflights linked to it are glazed cut-outs, so their area is
+    # subtracted here to get the roof's own opaque area for its heat-loss
+    # contribution. The rooflights still contribute their own full area
+    # under the "rooflight" category, so nothing is double-counted or lost.
+    rooflight_area_by_roof = {}
+    for rl in plant_room.rooflights:
+        if rl.roof_id:
+            rooflight_area_by_roof[rl.roof_id] = rooflight_area_by_roof.get(rl.roof_id, 0.0) + calc.hwq_area(
+                rl.height or 0, rl.width or 0, rl.qty or 0
+            )
+
     for r in plant_room.roofs:
+        net_area = max((r.area or 0.0) - rooflight_area_by_roof.get(r.id, 0.0), 0.0)
         entries.append({
             "category": "roof",
             "element_id": r.id,
             "location": r.location,
-            "area": r.area or 0.0,
+            "area": net_area,
             "existing_u": r.u_value or 0.0,
             "improved_u": _prop(r.proposed_u_value, r.u_value or 0.0),
             "measure_id": r.measure_id,

@@ -3,11 +3,17 @@ import { Link, useParams } from "react-router-dom";
 import { api } from "../api";
 import EditableTable from "../components/EditableTable";
 
-const TABS = ["Settings", "Walls", "Roofs", "Roof Lights", "Floors", "Doors", "Zones", "Building Fabric Improvements", "Results"];
+const TABS = ["Settings", "Walls", "Roofs", "Floors", "Volume", "Building Fabric Improvements", "Results"];
 
 function fmt(n, dp = 2) {
   if (n === null || n === undefined || Number.isNaN(n)) return "-";
   return Number(n).toFixed(dp);
+}
+
+function roofLightAreaByRoof(rooflights, roofId) {
+  return rooflights
+    .filter((rl) => String(rl.roof_id) === String(roofId))
+    .reduce((sum, rl) => sum + (rl.height || 0) * (rl.width || 0) * (rl.qty || 0), 0);
 }
 
 export default function PlantRoomPage() {
@@ -82,12 +88,6 @@ export default function PlantRoomPage() {
       if (!band || band.floor_u == null) return {};
       return { u_value: band.floor_u };
     },
-    door: (row) => {
-      const band = findAgeBand(row.age_band_id);
-      if (!band) return {};
-      const u = { Pedestrian: band.pedestrian_door_u, Vehicle: band.vehicle_door_u, Entrance: band.entrance_door_u }[row.door_type];
-      return u != null ? { u_value: u } : {};
-    },
   };
 
   // Auto-fills the proposed U-value from a chosen measure's typical U-value.
@@ -111,6 +111,29 @@ export default function PlantRoomPage() {
       refreshAll();
     },
   });
+
+  // Roofs/rooflights/floors typically share the same footprint, so these
+  // copy areas across instead of making the user re-measure and retype the
+  // same number in three places. They only ADD rows for locations that
+  // don't already exist elsewhere (matched by name) - they never overwrite
+  // an existing row, so re-running is always safe.
+  const syncFloorsFromRoofs = async () => {
+    const existingNames = new Set(room.floors.map((f) => (f.location || "").trim().toLowerCase()).filter(Boolean));
+    const toCreate = room.roofs.filter((r) => r.location && !existingNames.has(r.location.trim().toLowerCase()));
+    for (const r of toCreate) {
+      await api.createElement(roomId, "floors", { location: r.location, area: r.area || 0, u_value: 0 });
+    }
+    refreshAll();
+  };
+
+  const syncVolumeFromFloors = async () => {
+    const existingNames = new Set(room.zones.map((z) => (z.name || "").trim().toLowerCase()).filter(Boolean));
+    const toCreate = room.floors.filter((f) => f.location && !existingNames.has(f.location.trim().toLowerCase()));
+    for (const f of toCreate) {
+      await api.createElement(roomId, "zones", { name: f.location, area_m2: f.area || 0, height_m: 0 });
+    }
+    refreshAll();
+  };
 
   if (!room) return <div className="page">{error || "Loading..."}</div>;
 
@@ -164,7 +187,9 @@ export default function PlantRoomPage() {
       {tab === "Roofs" && (
         <div className="tab-panel">
           <p className="muted">
-            Tick "Has loft?" so the improvements tab proposes loft insulation instead of roof insulation.
+            Tick "Has loft?" so the improvements tab proposes loft insulation instead of roof insulation. Enter each
+            roof's full footprint area (Area column) - any rooflights below are cut-outs within that footprint, so
+            their area is automatically subtracted from the roof's own opaque area used for its heat loss.
           </p>
           <div className="table-scroll">
             <EditableTable
@@ -181,6 +206,12 @@ export default function PlantRoomPage() {
                 },
                 { key: "has_loft", label: "Has loft?", type: "checkbox" },
                 { key: "area", label: "Area (m2)", type: "number" },
+                {
+                  key: "net_area",
+                  label: "Net opaque area (m2)",
+                  type: "readonly",
+                  format: (v, row) => fmt((row.area || 0) - roofLightAreaByRoof(room.rooflights, row.id)),
+                },
                 { key: "u_value", label: "U value", type: "number" },
                 { key: "notes", label: "Notes", type: "text" },
               ]}
@@ -189,17 +220,14 @@ export default function PlantRoomPage() {
               {...elementApi("roofs")}
             />
           </div>
-        </div>
-      )}
 
-      {tab === "Roof Lights" && (
-        <div className="tab-panel">
+          <h3>Roof lights</h3>
+          <p className="muted">Link each rooflight to the roof it sits within so its area is subtracted correctly.</p>
           <div className="table-scroll">
             <EditableTable
               columns={[
+                { key: "roof_id", label: "Belongs to roof", type: "select", options: room.roofs.map((r) => ({ value: r.id, label: r.location || `Roof ${r.id}` })) },
                 { key: "location", label: "Location", type: "text" },
-                { key: "construction", label: "Construction", type: "text" },
-                { key: "reference", label: "Reference", type: "text" },
                 { key: "height", label: "Height (m)", type: "number" },
                 { key: "width", label: "Width (m)", type: "number" },
                 { key: "qty", label: "Qty", type: "number" },
@@ -207,7 +235,7 @@ export default function PlantRoomPage() {
                 { key: "notes", label: "Notes", type: "text" },
               ]}
               rows={room.rooflights}
-              newRowDefaults={{ location: "", construction: "", reference: "", height: 0, width: 0, qty: 1, u_value: 0 }}
+              newRowDefaults={{ location: "", height: 0, width: 0, qty: 1, u_value: 0 }}
               {...elementApi("rooflights")}
             />
           </div>
@@ -221,6 +249,13 @@ export default function PlantRoomPage() {
             U-Value Floor Calculator on the Reference Data page for the existing U-value, or pick an age band for a
             rough default.
           </p>
+          <div className="auto-propose-bar">
+            <button onClick={syncFloorsFromRoofs}>Copy areas from roofs</button>
+            <span className="muted">
+              Adds a floor row for any roof whose location doesn't already have one, using that roof's area (a
+              building's floor and roof footprints are normally the same). Never overwrites an existing floor row.
+            </span>
+          </div>
           <div className="table-scroll">
             <EditableTable
               columns={[
@@ -239,49 +274,23 @@ export default function PlantRoomPage() {
         </div>
       )}
 
-      {tab === "Doors" && (
-        <div className="tab-panel">
-          <div className="table-scroll">
-            <EditableTable
-              columns={[
-                { key: "location", label: "Location", type: "text" },
-                { key: "age_band_id", label: "Age band", type: "select", options: ageBandOptions, onSelect: (v, row) => ageBandDerivers.door(row) },
-                { key: "reference", label: "Reference", type: "text" },
-                {
-                  key: "door_type",
-                  label: "Type",
-                  type: "select",
-                  options: [
-                    { value: "Pedestrian", label: "Pedestrian" },
-                    { value: "Vehicle", label: "Vehicle" },
-                    { value: "Entrance", label: "Entrance" },
-                  ],
-                  onSelect: (v, row) => ageBandDerivers.door(row),
-                },
-                { key: "height", label: "Height (m)", type: "number" },
-                { key: "width", label: "Width (m)", type: "number" },
-                { key: "qty", label: "Qty", type: "number" },
-                { key: "u_value", label: "U value", type: "number" },
-                { key: "notes", label: "Notes", type: "text" },
-              ]}
-              rows={room.doors}
-              newRowDefaults={{ location: "", reference: "", door_type: "Pedestrian", height: 0, width: 0, qty: 1, u_value: 0 }}
-              {...elementApi("doors")}
-            />
-          </div>
-        </div>
-      )}
-
-      {tab === "Zones" && (
+      {tab === "Volume" && (
         <div className="tab-panel">
           <p className="muted">
-            Zones drive the volume calculation (Volume = &Sigma; area &times; height per zone). Air changes per hour
-            (ACH) is set on the Settings tab.
+            Volume drives the ventilation heat loss (Volume = &Sigma; area &times; height, per row). Air changes per
+            hour (ACH) is set on the Settings tab.
           </p>
+          <div className="auto-propose-bar">
+            <button onClick={syncVolumeFromFloors}>Copy areas from floors</button>
+            <span className="muted">
+              Adds a row for any floor whose location doesn't already have one here, using that floor's area - just
+              fill in the height. Never overwrites an existing row.
+            </span>
+          </div>
           <div className="table-scroll">
             <EditableTable
               columns={[
-                { key: "name", label: "Zone name", type: "text" },
+                { key: "name", label: "Name", type: "text" },
                 { key: "area_m2", label: "Area (m2)", type: "number" },
                 { key: "height_m", label: "Height (m)", type: "number" },
                 { key: "volume_m3", label: "Volume (m3)", type: "readonly", format: (v) => fmt(v) },
@@ -416,32 +425,29 @@ function FabricImprovementsTab({ room, measureOptions, measureDeriver, elementAp
           hideDeleteColumn
         />
       </div>
-
-      <h3>Doors</h3>
-      <div className="table-scroll">
-        <EditableTable
-          columns={[
-            { key: "location", label: "Location", type: "readonly" },
-            { key: "u_value", label: "Existing U", type: "readonly" },
-            { key: "measure_id", label: "Measure", type: "select", options: measureOptions("door"), onSelect: measureDeriver("proposed_u_value") },
-            { key: "proposed_u_value", label: "Proposed U", type: "number" },
-          ]}
-          rows={room.doors}
-          newRowDefaults={{}}
-          onUpdate={elementApi("doors").onUpdate}
-          onDelete={() => {}}
-          onAdd={() => {}}
-          hideAddRow
-          hideDeleteColumn
-        />
-      </div>
     </div>
   );
 }
 
 function SettingsTab({ room, onSave }) {
   const [form, setForm] = useState(room);
+  const [emissionFactors, setEmissionFactors] = useState([]);
   useEffect(() => setForm(room), [room]);
+  useEffect(() => {
+    api.listEmissionFactors().then(setEmissionFactors);
+  }, []);
+
+  // Pre-fill a blank unit rate as soon as we know both the room's fuel type
+  // and the reference rates, so the field never sits empty/hidden-fallback.
+  useEffect(() => {
+    if (form.unit_rate_per_kwh != null || emissionFactors.length === 0) return;
+    const defaultRate = emissionFactors.find((f) => f.fuel_type === form.fuel_type)?.unit_rate_per_kwh;
+    if (defaultRate != null) {
+      setForm((prev) => ({ ...prev, unit_rate_per_kwh: defaultRate }));
+      api.updatePlantRoom(room.id, { unit_rate_per_kwh: defaultRate });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [emissionFactors, form.fuel_type]);
 
   const set = (key) => (e) => {
     const val = e.target.type === "checkbox" ? e.target.checked : e.target.value;
@@ -469,8 +475,18 @@ function SettingsTab({ room, onSave }) {
           <select
             value={form.fuel_type || ""}
             onChange={(e) => {
-              setForm((prev) => ({ ...prev, fuel_type: e.target.value }));
-              commit({ fuel_type: e.target.value });
+              const fuelType = e.target.value;
+              // Pre-fill the unit rate from this fuel's reference-data default
+              // whenever it's currently blank, so the field always shows a
+              // real rate rather than silently falling back behind the
+              // scenes - still fully editable/overridable afterwards.
+              const defaultRate = emissionFactors.find((f) => f.fuel_type === fuelType)?.unit_rate_per_kwh;
+              const overrides = { fuel_type: fuelType };
+              if ((form.unit_rate_per_kwh === null || form.unit_rate_per_kwh === undefined) && defaultRate != null) {
+                overrides.unit_rate_per_kwh = defaultRate;
+              }
+              setForm((prev) => ({ ...prev, ...overrides }));
+              commit(overrides);
             }}
           >
             <option>Natural gas</option>
@@ -483,9 +499,13 @@ function SettingsTab({ room, onSave }) {
           <input type="number" step="any" value={form.annual_fuel_usage_kwh ?? ""} onChange={set("annual_fuel_usage_kwh")} onBlur={() => commit()} />
         </label>
         <label>
-          Unit rate override (£/kWh, optional)
+          Unit rate (£/kWh)
           <input type="number" step="any" value={form.unit_rate_per_kwh ?? ""} onChange={set("unit_rate_per_kwh")} onBlur={() => commit()} />
         </label>
+        <p className="muted" style={{ margin: "-0.4rem 0 0" }}>
+          Defaults from the fuel's rate on the Reference Data page when the fuel type is set - edit it here to
+          override for this plant room only.
+        </p>
         <label>
           Boiler efficiency (0-1)
           <input type="number" step="any" value={form.boiler_efficiency ?? ""} onChange={set("boiler_efficiency")} onBlur={() => commit()} />

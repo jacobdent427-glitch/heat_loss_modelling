@@ -324,6 +324,11 @@ class RoofLightElement(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     plant_room_id = db.Column(db.Integer, db.ForeignKey("plant_room.id"), nullable=False)
 
+    # A rooflight is a glazed cut-out within a roof - linking it lets the
+    # calc engine subtract its area from that roof's opaque area, so the
+    # same footprint isn't counted as both solid roof and rooflight.
+    roof_id = db.Column(db.Integer, db.ForeignKey("roof_element.id"))
+
     location = db.Column(db.String(200))
     construction = db.Column(db.String(200))
     reference = db.Column(db.String(200))
@@ -341,6 +346,7 @@ class RoofLightElement(db.Model):
         return {
             "id": self.id,
             "plant_room_id": self.plant_room_id,
+            "roof_id": self.roof_id,
             "location": self.location,
             "construction": self.construction,
             "reference": self.reference,

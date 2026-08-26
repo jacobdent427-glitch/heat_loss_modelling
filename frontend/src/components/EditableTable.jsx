@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
  * Generic spreadsheet-like editable table.
  *
  * columns: [{ key, label, type: 'text'|'number'|'checkbox'|'select'|'readonly', options?, width?,
- *              onSelect?: (value, row) => extraFieldsObject }]
+ *              onSelect?: (value, row) => extraFieldsObject, format?: (value, row) => displayValue }]
  *   `onSelect` lets a select column (e.g. an age-band picker) derive/pre-fill other fields
  *   (e.g. the U-value) in the same row when it changes - the result is merged into both the
  *   local row state and the update sent to the server.
@@ -50,9 +50,9 @@ export default function EditableTable({ columns, rows, onUpdate, onDelete, onAdd
     },
   });
 
-  const renderInput = (value, col, handlers, immediateCommit) => {
+  const renderInput = (value, col, handlers, immediateCommit, row) => {
     if (col.type === "readonly") {
-      return <span>{col.format ? col.format(value) : value}</span>;
+      return <span>{col.format ? col.format(value, row) : value}</span>;
     }
     if (col.type === "select") {
       return (
@@ -111,7 +111,7 @@ export default function EditableTable({ columns, rows, onUpdate, onDelete, onAdd
                 setLocalRows((prev) => prev.map((r) => (r.id === row.id ? updater(r) : r)));
               const handlers = makeHandlers(row, c, setRowState);
               return (
-                <td key={c.key}>{renderInput(row[c.key], c, handlers, (fields) => onUpdate(row.id, fields))}</td>
+                <td key={c.key}>{renderInput(row[c.key], c, handlers, (fields) => onUpdate(row.id, fields), row)}</td>
               );
             })}
             {!hideDeleteColumn && (
@@ -136,7 +136,7 @@ export default function EditableTable({ columns, rows, onUpdate, onDelete, onAdd
           <tr>
             {columns.map((c) => {
               const handlers = makeHandlers(newRow, c, setNewRow);
-              return <td key={c.key}>{renderInput(newRow[c.key], c, handlers, () => {})}</td>;
+              return <td key={c.key}>{renderInput(newRow[c.key], c, handlers, () => {}, newRow)}</td>;
             })}
             <td>
               <button

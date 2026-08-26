@@ -15,7 +15,7 @@ ELEMENT_TYPES = {
         "proposed_u_value", "measure_id", "notes",
     ]),
     "rooflights": (RoofLightElement, [
-        "location", "construction", "reference", "height", "width", "qty", "u_value",
+        "roof_id", "location", "construction", "reference", "height", "width", "qty", "u_value",
         "proposed_u_value", "measure_id", "notes",
     ]),
     "floors": (FloorElement, [
