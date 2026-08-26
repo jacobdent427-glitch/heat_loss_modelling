@@ -34,6 +34,7 @@ export const api = {
   updatePlantRoom: (id, data) => request(`/plant-rooms/${id}`, { method: "PUT", body: JSON.stringify(data) }),
   deletePlantRoom: (id) => request(`/plant-rooms/${id}`, { method: "DELETE" }),
   getPlantRoomResults: (id) => request(`/plant-rooms/${id}/results`),
+  autoPropose: (id) => request(`/plant-rooms/${id}/auto-propose`, { method: "POST" }),
 
   listElements: (roomId, type) => request(`/plant-rooms/${roomId}/${type}`),
   createElement: (roomId, type, data) =>

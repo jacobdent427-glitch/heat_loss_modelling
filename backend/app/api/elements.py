@@ -6,12 +6,12 @@ from . import api_bp
 
 ELEMENT_TYPES = {
     "walls": (WallElement, [
-        "location", "construction", "reference", "height", "width", "window_pct",
-        "wall_u_value", "window_u_value", "proposed_wall_u_value", "proposed_window_u_value",
+        "location", "construction", "reference", "height", "width", "window_pct", "window_frame_type",
+        "age_band_id", "wall_u_value", "window_u_value", "proposed_wall_u_value", "proposed_window_u_value",
         "wall_measure_id", "window_measure_id", "notes",
     ]),
     "roofs": (RoofElement, [
-        "location", "construction", "reference", "roof_type", "has_loft", "area", "u_value",
+        "location", "construction", "reference", "roof_type", "has_loft", "area", "age_band_id", "u_value",
         "proposed_u_value", "measure_id", "notes",
     ]),
     "rooflights": (RoofLightElement, [
@@ -19,11 +19,11 @@ ELEMENT_TYPES = {
         "proposed_u_value", "measure_id", "notes",
     ]),
     "floors": (FloorElement, [
-        "location", "construction", "reference", "area", "u_value", "proposed_u_value",
+        "location", "construction", "reference", "area", "age_band_id", "u_value", "proposed_u_value",
         "measure_id", "notes",
     ]),
     "doors": (DoorElement, [
-        "location", "construction", "reference", "door_type", "height", "width", "qty", "u_value",
+        "location", "construction", "reference", "door_type", "height", "width", "qty", "age_band_id", "u_value",
         "proposed_u_value", "measure_id", "notes",
     ]),
     "zones": (Zone, ["name", "area_m2", "height_m"]),

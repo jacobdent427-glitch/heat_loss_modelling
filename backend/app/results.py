@@ -167,13 +167,22 @@ def plant_room_results(plant_room):
     for e in entries:
         if not e["measure_id"]:
             continue
-        delta_ua = (e["existing_u"] * e["area"]) - (e["improved_u"] * e["area"])
+        existing_ua = e["existing_u"] * e["area"]
+        improved_ua = e["improved_u"] * e["area"]
+        delta_ua = existing_ua - improved_ua
         if abs(delta_ua) < 1e-9:
             continue
-        g = measure_groups.setdefault(e["measure_id"], {"area": 0.0, "delta_ua": 0.0, "elements": []})
+        g = measure_groups.setdefault(
+            e["measure_id"], {"area": 0.0, "delta_ua": 0.0, "existing_ua": 0.0, "improved_ua": 0.0, "categories": set(), "elements": []}
+        )
         g["area"] += e["area"]
         g["delta_ua"] += delta_ua
+        g["existing_ua"] += existing_ua
+        g["improved_ua"] += improved_ua
+        g["categories"].add(e["category"])
         g["elements"].append({"category": e["category"], "element_id": e["element_id"], "location": e["location"]})
+
+    category_labels = {"wall": "wall", "window": "window", "roof": "roof", "rooflight": "rooflight", "floor": "floor", "door": "door"}
 
     measure_results = []
     for measure_id, g in measure_groups.items():
@@ -181,6 +190,10 @@ def plant_room_results(plant_room):
         thermal_saving = calc.thermal_energy_saving_kwh(pct_reduction, space_heating_kwh)
         co2_saving = calc.co2_saving_tonnes(thermal_saving, emission_factor)
         cost_saving = calc.cost_saving_gbp(thermal_saving, unit_rate)
+        avg_existing_u = g["existing_ua"] / g["area"] if g["area"] else 0.0
+        avg_improved_u = g["improved_ua"] / g["area"] if g["area"] else 0.0
+        category_text = " & ".join(category_labels.get(c, c) for c in sorted(g["categories"]))
+        assumptions = f"Changed U-value of {category_text} from {avg_existing_u:.2f} to {avg_improved_u:.2f}"
         measure_results.append({
             "measure_id": measure_id,
             "area_of_improvement_m2": g["area"],
@@ -189,6 +202,9 @@ def plant_room_results(plant_room):
             "thermal_energy_saving_kwh": thermal_saving,
             "co2_saving_tonnes_per_yr": co2_saving,
             "cost_saving_gbp_per_yr": cost_saving,
+            "avg_existing_u_value": avg_existing_u,
+            "avg_improved_u_value": avg_improved_u,
+            "assumptions": assumptions,
             "elements": g["elements"],
         })
 
@@ -244,3 +260,57 @@ def apply_measure_cost_analysis(measure_results, measures_by_id):
             "cost_per_tonne_co2e": cost_per_tonne,
         })
     return enriched
+
+
+# Standard measure to apply per fabric category, matching the project brief's
+# default upgrade path (floor insulation is deliberately excluded - "never
+# recommended"; rooflights and doors have no standard measure in the
+# reference table so are left for manual review).
+WALL_MEASURE_NAME = "Cavity wall insulation"
+WINDOW_MEASURE_NAME = "Double glazing with metal or plastic frames"
+ROOF_MEASURE_NAME = "Roof insulation"
+LOFT_MEASURE_NAME = "Loft insulation"
+
+
+def auto_propose_plant_room(plant_room, measures_by_name):
+    """Automates the 'proposed building' step: for every element whose
+    existing U-value is worse than the standard measure's typical achievable
+    U-value, and which doesn't already have a proposed value set, apply that
+    measure and its typical U-value as the proposal.
+
+    Only fills fields that are currently blank, so it never overwrites a
+    value the user has already reviewed/edited/accepted - clearing a
+    proposed field back out is how the user "discards" a suggestion, and
+    editing the pre-filled value afterwards is how they "accept and edit"
+    it, per the project brief.
+    """
+    changes = []
+
+    def maybe_apply(element, existing_u, proposed_attr, measure_attr, measure_name, category, label):
+        if getattr(element, proposed_attr) is not None:
+            return
+        measure = measures_by_name.get(measure_name)
+        if not measure or measure.typical_u_value is None:
+            return
+        if existing_u is None or existing_u <= measure.typical_u_value:
+            return
+        setattr(element, proposed_attr, measure.typical_u_value)
+        setattr(element, measure_attr, measure.id)
+        changes.append({
+            "category": category,
+            "element_id": element.id,
+            "location": label,
+            "measure_name": measure.name,
+            "existing_u_value": existing_u,
+            "proposed_u_value": measure.typical_u_value,
+        })
+
+    for w in plant_room.walls:
+        maybe_apply(w, w.wall_u_value, "proposed_wall_u_value", "wall_measure_id", WALL_MEASURE_NAME, "wall", w.location)
+        maybe_apply(w, w.window_u_value, "proposed_window_u_value", "window_measure_id", WINDOW_MEASURE_NAME, "window", w.location)
+
+    for r in plant_room.roofs:
+        measure_name = LOFT_MEASURE_NAME if r.has_loft else ROOF_MEASURE_NAME
+        maybe_apply(r, r.u_value, "proposed_u_value", "measure_id", measure_name, "roof", r.location)
+
+    return changes

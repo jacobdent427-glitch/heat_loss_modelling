@@ -14,15 +14,18 @@ export default function PlantRoomPage() {
   const { roomId } = useParams();
   const [room, setRoom] = useState(null);
   const [measures, setMeasures] = useState([]);
+  const [ageBands, setAgeBands] = useState([]);
   const [results, setResults] = useState(null);
   const [tab, setTab] = useState("Settings");
   const [error, setError] = useState(null);
+  const [autoProposeMsg, setAutoProposeMsg] = useState(null);
 
   const load = async () => {
     try {
-      const [r, m] = await Promise.all([api.getPlantRoom(roomId), api.listMeasures()]);
+      const [r, m, a] = await Promise.all([api.getPlantRoom(roomId), api.listMeasures(), api.listAgeBands()]);
       setRoom(r);
       setMeasures(m);
+      setAgeBands(a);
     } catch (e) {
       setError(e.message);
     }
@@ -47,10 +50,63 @@ export default function PlantRoomPage() {
     await loadResults();
   };
 
+  const runAutoPropose = async () => {
+    const res = await api.autoPropose(roomId);
+    setAutoProposeMsg(
+      res.updated_count === 0
+        ? "No changes - every element's U-value already meets the standard measures, or already has a proposed value set."
+        : `Applied ${res.updated_count} proposed upgrade(s). Review them in each tab (proposed U-value / measure columns) - clear a field to discard a suggestion, or edit the value to override it.`
+    );
+    refreshAll();
+  };
+
   const measureOptions = (applies_to) =>
     measures
       .filter((m) => m.applies_to.length === 0 || m.applies_to.includes(applies_to))
       .map((m) => ({ value: m.id, label: m.name }));
+
+  const ageBandOptions = ageBands.map((a) => ({ value: a.id, label: a.period_label }));
+  const findAgeBand = (id) => ageBands.find((a) => String(a.id) === String(id));
+  const findMeasure = (id) => measures.find((m) => String(m.id) === String(id));
+
+  // Derives U-value(s) from the selected age band + the row's current type fields
+  // (roof_type / door_type / window_frame_type), pre-filling the "existing" U-value
+  // while leaving it fully editable afterwards.
+  const ageBandDerivers = {
+    wall: (row) => {
+      const band = findAgeBand(row.age_band_id);
+      if (!band) return {};
+      const windowU = row.window_frame_type === "Metal" ? band.window_metal_u : band.window_other_u;
+      return {
+        ...(band.wall_u != null ? { wall_u_value: band.wall_u } : {}),
+        ...(windowU != null ? { window_u_value: windowU } : {}),
+      };
+    },
+    roof: (row) => {
+      const band = findAgeBand(row.age_band_id);
+      if (!band) return {};
+      const u = row.roof_type === "Flat" ? band.flat_roof_u : band.pitched_roof_u;
+      return u != null ? { u_value: u } : {};
+    },
+    floor: (row) => {
+      const band = findAgeBand(row.age_band_id);
+      if (!band || band.floor_u == null) return {};
+      return { u_value: band.floor_u };
+    },
+    door: (row) => {
+      const band = findAgeBand(row.age_band_id);
+      if (!band) return {};
+      const u = { Pedestrian: band.pedestrian_door_u, Vehicle: band.vehicle_door_u, Entrance: band.entrance_door_u }[row.door_type];
+      return u != null ? { u_value: u } : {};
+    },
+  };
+
+  // Auto-fills the proposed U-value from a chosen measure's typical U-value.
+  const measureDeriver = (proposedField) => (measureId) => {
+    const measure = findMeasure(measureId);
+    if (!measure || measure.typical_u_value == null) return {};
+    return { [proposedField]: measure.typical_u_value };
+  };
 
   const elementApi = (type) => ({
     onUpdate: async (id, fields) => {
@@ -77,6 +133,16 @@ export default function PlantRoomPage() {
       <h1>{room.name}</h1>
       {error && <p className="error">{error}</p>}
 
+      <div className="auto-propose-bar">
+        <button onClick={runAutoPropose}>Auto-generate proposed building</button>
+        <span className="muted">
+          Fills in proposed U-values/measures for elements that don't meet the standard measures yet (walls: cavity
+          insulation, windows: double glazing, roofs: loft/roof insulation). Never overwrites a value you've already
+          set - accept it as-is, edit it, or clear it to discard.
+        </span>
+      </div>
+      {autoProposeMsg && <p className="notice">{autoProposeMsg}</p>}
+
       <div className="tabs">
         {TABS.map((t) => (
           <button key={t} className={t === tab ? "tab active" : "tab"} onClick={() => setTab(t)}>
@@ -90,28 +156,37 @@ export default function PlantRoomPage() {
       {tab === "Walls" && (
         <div className="tab-panel">
           <p className="muted">
-            Window % of a wall row is treated as a separate glazed element sharing that wall's height/width (matches
-            the workbook's wall + window-percentage input).
+            Window % of a wall row is treated as a separate glazed element sharing that wall's height/width.
+            Pick an age band to auto-fill the existing U-values; pick a measure under "Proposed" to auto-fill the
+            proposed U-value - both stay editable afterwards.
           </p>
           <div className="table-scroll">
             <EditableTable
+              columnGroups={[
+                { label: "Element", count: 3, className: "group-element" },
+                { label: "Geometry", count: 4, className: "group-geometry" },
+                { label: "Existing building", count: 2, className: "group-existing" },
+                { label: "Proposed / improvement", count: 4, className: "group-proposed" },
+                { label: "", count: 1 },
+              ]}
               columns={[
-                { key: "location", label: "Location", type: "text" },
-                { key: "construction", label: "Construction / age", type: "text" },
-                { key: "reference", label: "Reference", type: "text" },
-                { key: "height", label: "Height (m)", type: "number", width: "70px" },
-                { key: "width", label: "Width (m)", type: "number", width: "70px" },
-                { key: "window_pct", label: "% windows (0-1)", type: "number", width: "80px" },
-                { key: "wall_u_value", label: "Wall U", type: "number", width: "70px" },
-                { key: "window_u_value", label: "Window U", type: "number", width: "70px" },
-                { key: "proposed_wall_u_value", label: "Proposed wall U", type: "number", width: "80px" },
-                { key: "wall_measure_id", label: "Wall measure", type: "select", options: measureOptions("wall") },
-                { key: "proposed_window_u_value", label: "Proposed window U", type: "number", width: "80px" },
-                { key: "window_measure_id", label: "Window measure", type: "select", options: measureOptions("window") },
+                { key: "location", label: "Location", type: "text", group: "group-element" },
+                { key: "age_band_id", label: "Age band", type: "select", options: ageBandOptions, group: "group-element", onSelect: (v, row) => ageBandDerivers.wall(row) },
+                { key: "reference", label: "Reference", type: "text", group: "group-element" },
+                { key: "height", label: "Height (m)", type: "number", width: "70px", group: "group-geometry" },
+                { key: "width", label: "Width (m)", type: "number", width: "70px", group: "group-geometry" },
+                { key: "window_pct", label: "% windows (0-1)", type: "number", width: "80px", group: "group-geometry" },
+                { key: "window_frame_type", label: "Window frame", type: "select", options: [{ value: "Other", label: "Other" }, { value: "Metal", label: "Metal" }], group: "group-geometry", onSelect: (v, row) => ageBandDerivers.wall(row) },
+                { key: "wall_u_value", label: "Wall U", type: "number", width: "70px", group: "group-existing" },
+                { key: "window_u_value", label: "Window U", type: "number", width: "70px", group: "group-existing" },
+                { key: "wall_measure_id", label: "Wall measure", type: "select", options: measureOptions("wall"), group: "group-proposed", onSelect: measureDeriver("proposed_wall_u_value") },
+                { key: "proposed_wall_u_value", label: "Proposed wall U", type: "number", width: "80px", group: "group-proposed" },
+                { key: "window_measure_id", label: "Window measure", type: "select", options: measureOptions("window"), group: "group-proposed", onSelect: measureDeriver("proposed_window_u_value") },
+                { key: "proposed_window_u_value", label: "Proposed window U", type: "number", width: "80px", group: "group-proposed" },
                 { key: "notes", label: "Notes", type: "text" },
               ]}
               rows={room.walls}
-              newRowDefaults={{ location: "", construction: "", reference: "", height: 0, width: 0, window_pct: 0, wall_u_value: 0, window_u_value: 0 }}
+              newRowDefaults={{ location: "", reference: "", height: 0, width: 0, window_pct: 0, window_frame_type: "Other", wall_u_value: 0, window_u_value: 0 }}
               {...elementApi("walls")}
             />
           </div>
@@ -120,31 +195,40 @@ export default function PlantRoomPage() {
 
       {tab === "Roofs" && (
         <div className="tab-panel">
+          <p className="muted">Tip: tick "Has loft?" so auto-generate proposes loft insulation instead of roof insulation.</p>
           <div className="table-scroll">
             <EditableTable
+              columnGroups={[
+                { label: "Element", count: 3, className: "group-element" },
+                { label: "Geometry", count: 3, className: "group-geometry" },
+                { label: "Existing building", count: 1, className: "group-existing" },
+                { label: "Proposed / improvement", count: 2, className: "group-proposed" },
+                { label: "", count: 1 },
+              ]}
               columns={[
-                { key: "location", label: "Location", type: "text" },
-                { key: "construction", label: "Construction / age", type: "text" },
-                { key: "reference", label: "Reference", type: "text" },
+                { key: "location", label: "Location", type: "text", group: "group-element" },
+                { key: "age_band_id", label: "Age band", type: "select", options: ageBandOptions, group: "group-element", onSelect: (v, row) => ageBandDerivers.roof(row) },
+                { key: "reference", label: "Reference", type: "text", group: "group-element" },
                 {
                   key: "roof_type",
                   label: "Type",
                   type: "select",
                   options: [{ value: "Pitched", label: "Pitched" }, { value: "Flat", label: "Flat" }],
+                  group: "group-geometry",
+                  onSelect: (v, row) => ageBandDerivers.roof(row),
                 },
-                { key: "has_loft", label: "Has loft?", type: "checkbox" },
-                { key: "area", label: "Area (m2)", type: "number", width: "80px" },
-                { key: "u_value", label: "U value", type: "number", width: "70px" },
-                { key: "proposed_u_value", label: "Proposed U", type: "number", width: "80px" },
-                { key: "measure_id", label: "Measure", type: "select", options: measureOptions("roof") },
+                { key: "has_loft", label: "Has loft?", type: "checkbox", group: "group-geometry" },
+                { key: "area", label: "Area (m2)", type: "number", width: "80px", group: "group-geometry" },
+                { key: "u_value", label: "U value", type: "number", width: "70px", group: "group-existing" },
+                { key: "measure_id", label: "Measure", type: "select", options: measureOptions("roof"), group: "group-proposed", onSelect: measureDeriver("proposed_u_value") },
+                { key: "proposed_u_value", label: "Proposed U", type: "number", width: "80px", group: "group-proposed" },
                 { key: "notes", label: "Notes", type: "text" },
               ]}
               rows={room.roofs}
-              newRowDefaults={{ location: "", construction: "", reference: "", roof_type: "Pitched", has_loft: false, area: 0, u_value: 0 }}
+              newRowDefaults={{ location: "", reference: "", roof_type: "Pitched", has_loft: false, area: 0, u_value: 0 }}
               {...elementApi("roofs")}
             />
           </div>
-          <p className="muted">Tip: if "Has loft?" is ticked, prefer the "Loft insulation" measure over "Roof insulation".</p>
         </div>
       )}
 
@@ -175,22 +259,30 @@ export default function PlantRoomPage() {
       {tab === "Floors" && (
         <div className="tab-panel">
           <p className="muted">
-            Floor insulation is generally not recommended (expensive, disruptive, poor cost-effectiveness) - use the
-            U-Value Floor Calculator on the Reference Data page to derive the existing U-value.
+            Floor insulation is generally not recommended (expensive, disruptive, poor cost-effectiveness) and is
+            excluded from auto-generate - use the U-Value Floor Calculator on the Reference Data page for the
+            existing U-value, or pick an age band for a rough default.
           </p>
           <div className="table-scroll">
             <EditableTable
+              columnGroups={[
+                { label: "Element", count: 3, className: "group-element" },
+                { label: "Geometry", count: 1, className: "group-geometry" },
+                { label: "Existing building", count: 1, className: "group-existing" },
+                { label: "Proposed", count: 1, className: "group-proposed" },
+                { label: "", count: 1 },
+              ]}
               columns={[
-                { key: "location", label: "Location", type: "text" },
-                { key: "construction", label: "Construction", type: "text" },
-                { key: "reference", label: "Reference", type: "text" },
-                { key: "area", label: "Area (m2)", type: "number", width: "80px" },
-                { key: "u_value", label: "U value", type: "number", width: "70px" },
-                { key: "proposed_u_value", label: "Proposed U", type: "number", width: "80px" },
+                { key: "location", label: "Location", type: "text", group: "group-element" },
+                { key: "age_band_id", label: "Age band", type: "select", options: ageBandOptions, group: "group-element", onSelect: (v, row) => ageBandDerivers.floor(row) },
+                { key: "reference", label: "Reference", type: "text", group: "group-element" },
+                { key: "area", label: "Area (m2)", type: "number", width: "80px", group: "group-geometry" },
+                { key: "u_value", label: "U value", type: "number", width: "70px", group: "group-existing" },
+                { key: "proposed_u_value", label: "Proposed U", type: "number", width: "80px", group: "group-proposed" },
                 { key: "notes", label: "Notes", type: "text" },
               ]}
               rows={room.floors}
-              newRowDefaults={{ location: "", construction: "", reference: "", area: 0, u_value: 0 }}
+              newRowDefaults={{ location: "", reference: "", area: 0, u_value: 0 }}
               {...elementApi("floors")}
             />
           </div>
@@ -201,10 +293,17 @@ export default function PlantRoomPage() {
         <div className="tab-panel">
           <div className="table-scroll">
             <EditableTable
+              columnGroups={[
+                { label: "Element", count: 3, className: "group-element" },
+                { label: "Geometry", count: 4, className: "group-geometry" },
+                { label: "Existing building", count: 1, className: "group-existing" },
+                { label: "Proposed / improvement", count: 2, className: "group-proposed" },
+                { label: "", count: 1 },
+              ]}
               columns={[
-                { key: "location", label: "Location", type: "text" },
-                { key: "construction", label: "Construction", type: "text" },
-                { key: "reference", label: "Reference", type: "text" },
+                { key: "location", label: "Location", type: "text", group: "group-element" },
+                { key: "age_band_id", label: "Age band", type: "select", options: ageBandOptions, group: "group-element", onSelect: (v, row) => ageBandDerivers.door(row) },
+                { key: "reference", label: "Reference", type: "text", group: "group-element" },
                 {
                   key: "door_type",
                   label: "Type",
@@ -214,17 +313,19 @@ export default function PlantRoomPage() {
                     { value: "Vehicle", label: "Vehicle" },
                     { value: "Entrance", label: "Entrance" },
                   ],
+                  group: "group-geometry",
+                  onSelect: (v, row) => ageBandDerivers.door(row),
                 },
-                { key: "height", label: "Height (m)", type: "number", width: "70px" },
-                { key: "width", label: "Width (m)", type: "number", width: "70px" },
-                { key: "qty", label: "Qty", type: "number", width: "50px" },
-                { key: "u_value", label: "U value", type: "number", width: "70px" },
-                { key: "proposed_u_value", label: "Proposed U", type: "number", width: "80px" },
-                { key: "measure_id", label: "Measure", type: "select", options: measureOptions("door") },
+                { key: "height", label: "Height (m)", type: "number", width: "70px", group: "group-geometry" },
+                { key: "width", label: "Width (m)", type: "number", width: "70px", group: "group-geometry" },
+                { key: "qty", label: "Qty", type: "number", width: "50px", group: "group-geometry" },
+                { key: "u_value", label: "U value", type: "number", width: "70px", group: "group-existing" },
+                { key: "measure_id", label: "Measure", type: "select", options: measureOptions("door"), group: "group-proposed", onSelect: measureDeriver("proposed_u_value") },
+                { key: "proposed_u_value", label: "Proposed U", type: "number", width: "80px", group: "group-proposed" },
                 { key: "notes", label: "Notes", type: "text" },
               ]}
               rows={room.doors}
-              newRowDefaults={{ location: "", construction: "", reference: "", door_type: "Pedestrian", height: 0, width: 0, qty: 1, u_value: 0 }}
+              newRowDefaults={{ location: "", reference: "", door_type: "Pedestrian", height: 0, width: 0, qty: 1, u_value: 0 }}
               {...elementApi("doors")}
             />
           </div>

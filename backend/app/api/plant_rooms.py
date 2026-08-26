@@ -1,8 +1,8 @@
 from flask import jsonify, request
 
 from ..extensions import db
-from ..models import PlantRoom, Project
-from ..results import plant_room_results
+from ..models import PlantRoom, Project, ImprovementMeasure
+from ..results import plant_room_results, auto_propose_plant_room
 from . import api_bp
 
 PLANT_ROOM_FIELDS = [
@@ -72,3 +72,12 @@ def delete_plant_room(room_id):
 def get_plant_room_results(room_id):
     room = db.get_or_404(PlantRoom, room_id)
     return jsonify(plant_room_results(room))
+
+
+@api_bp.post("/plant-rooms/<int:room_id>/auto-propose")
+def auto_propose(room_id):
+    room = db.get_or_404(PlantRoom, room_id)
+    measures_by_name = {m.name: m for m in ImprovementMeasure.query.all()}
+    changes = auto_propose_plant_room(room, measures_by_name)
+    db.session.commit()
+    return jsonify({"updated_count": len(changes), "changes": changes})

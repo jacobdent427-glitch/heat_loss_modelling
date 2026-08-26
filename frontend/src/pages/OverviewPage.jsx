@@ -72,20 +72,19 @@ export default function OverviewPage() {
       </div>
 
       <h2>Building fabric improvement measures</h2>
+      <p className="muted">Cost input table - relative cost of improvement (£/m2) and persistence factor come from each measure's reference data.</p>
       <div className="table-scroll">
-        <table className="list-table">
+        <table className="list-table spreadsheet-table">
           <thead>
             <tr>
               <th>Plant room</th>
               <th>Measure</th>
-              <th>Area (m2)</th>
-              <th>Energy saving (kWh/yr)</th>
-              <th>CO2 saving (t/yr)</th>
-              <th>Cost saving (£/yr)</th>
-              <th>Cost of improvement</th>
-              <th>Lifetime carbon saving (t)</th>
-              <th>Payback (yrs)</th>
-              <th>£/tonne CO2e</th>
+              <th>Description of Improvement</th>
+              <th>Assumptions made</th>
+              <th>Persistance Factor</th>
+              <th>Area of improvement</th>
+              <th>Relative cost of improvement (£/m2)</th>
+              <th>Cost</th>
             </tr>
           </thead>
           <tbody>
@@ -93,19 +92,54 @@ export default function OverviewPage() {
               <tr key={i}>
                 <td>{m.plant_room_name}</td>
                 <td>{m.measure_name}</td>
+                <td>{m.measure_name}</td>
+                <td>{m.assumptions}</td>
+                <td>{fmt(m.lifetime_years, 0)}</td>
                 <td>{fmt(m.area_of_improvement_m2)}</td>
-                <td>{fmt(m.thermal_energy_saving_kwh, 0)}</td>
-                <td>{fmt(m.co2_saving_tonnes_per_yr, 3)}</td>
-                <td>&pound;{fmt(m.cost_saving_gbp_per_yr, 0)}</td>
-                <td>&pound;{fmt(m.cost_of_improvement_gbp, 0)}</td>
-                <td>{fmt(m.lifetime_carbon_saving_tonnes, 2)}</td>
-                <td>{m.payback_period_years === null ? "-" : fmt(m.payback_period_years, 1)}</td>
-                <td>{m.cost_per_tonne_co2e === null ? "-" : fmt(m.cost_per_tonne_co2e, 0)}</td>
+                <td>&pound;{fmt(m.cost_per_m2, 0)}</td>
+                <td>&pound;{fmt(m.cost_of_improvement_gbp, 2)}</td>
               </tr>
             ))}
             {data.measures.length === 0 && (
               <tr>
-                <td colSpan={10}>No improvement measures assigned yet - set a proposed U-value and measure on an element in a plant room.</td>
+                <td colSpan={8}>No improvement measures assigned yet - set a proposed U-value and measure on an element in a plant room, or use "Auto-generate proposed building".</td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      <h2>Performance of proposed thermal improvements</h2>
+      <div className="table-scroll">
+        <table className="list-table spreadsheet-table">
+          <thead>
+            <tr>
+              <th>Description of Improvement</th>
+              <th>Assumptions made</th>
+              <th>Energy savings (kWh/year)</th>
+              <th>CO2 savings (Tonnes)</th>
+              <th>Cost savings (£/year)</th>
+              <th>Cost of Improvements</th>
+              <th>Lifetime carbon savings</th>
+              <th>Payback</th>
+            </tr>
+          </thead>
+          <tbody>
+            {data.measures.map((m, i) => (
+              <tr key={i}>
+                <td>{m.measure_name}</td>
+                <td>{m.assumptions}</td>
+                <td>{fmt(m.thermal_energy_saving_kwh, 2)}</td>
+                <td>{fmt(m.co2_saving_tonnes_per_yr, 2)}</td>
+                <td>&pound;{fmt(m.cost_saving_gbp_per_yr, 0)}</td>
+                <td>&pound;{fmt(m.cost_of_improvement_gbp, 0)}</td>
+                <td>{fmt(m.lifetime_carbon_saving_tonnes, 2)}</td>
+                <td>{m.payback_period_years === null ? "-" : fmt(m.payback_period_years, 2)}</td>
+              </tr>
+            ))}
+            {data.measures.length === 0 && (
+              <tr>
+                <td colSpan={8}>No improvement measures assigned yet.</td>
               </tr>
             )}
           </tbody>

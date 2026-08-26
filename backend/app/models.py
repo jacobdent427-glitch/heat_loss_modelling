@@ -244,12 +244,14 @@ class WallElement(db.Model):
     plant_room_id = db.Column(db.Integer, db.ForeignKey("plant_room.id"), nullable=False)
 
     location = db.Column(db.String(200))
-    construction = db.Column(db.String(200))  # age band / construction note
+    construction = db.Column(db.String(200))  # free-text note, separate from age_band_id
     reference = db.Column(db.String(200))
     height = db.Column(db.Float, default=0.0)
     width = db.Column(db.Float, default=0.0)
     window_pct = db.Column(db.Float, default=0.0)  # 0-1
+    window_frame_type = db.Column(db.String(10), default="Other")  # Metal | Other
 
+    age_band_id = db.Column(db.Integer, db.ForeignKey("age_band_u_value.id"))
     wall_u_value = db.Column(db.Float, default=0.0)
     window_u_value = db.Column(db.Float, default=0.0)
 
@@ -270,6 +272,8 @@ class WallElement(db.Model):
             "height": self.height,
             "width": self.width,
             "window_pct": self.window_pct,
+            "window_frame_type": self.window_frame_type,
+            "age_band_id": self.age_band_id,
             "wall_u_value": self.wall_u_value,
             "window_u_value": self.window_u_value,
             "proposed_wall_u_value": self.proposed_wall_u_value,
@@ -290,6 +294,7 @@ class RoofElement(db.Model):
     roof_type = db.Column(db.String(20), default="Pitched")  # Pitched | Flat
     has_loft = db.Column(db.Boolean, default=False)
     area = db.Column(db.Float, default=0.0)
+    age_band_id = db.Column(db.Integer, db.ForeignKey("age_band_u_value.id"))
     u_value = db.Column(db.Float, default=0.0)
 
     proposed_u_value = db.Column(db.Float)
@@ -307,6 +312,7 @@ class RoofElement(db.Model):
             "roof_type": self.roof_type,
             "has_loft": self.has_loft,
             "area": self.area,
+            "age_band_id": self.age_band_id,
             "u_value": self.u_value,
             "proposed_u_value": self.proposed_u_value,
             "measure_id": self.measure_id,
@@ -356,6 +362,7 @@ class FloorElement(db.Model):
     construction = db.Column(db.String(200))
     reference = db.Column(db.String(200))
     area = db.Column(db.Float, default=0.0)
+    age_band_id = db.Column(db.Integer, db.ForeignKey("age_band_u_value.id"))
     u_value = db.Column(db.Float, default=0.0)
 
     # Floor insulation is deliberately not recommended in the improvement
@@ -373,6 +380,7 @@ class FloorElement(db.Model):
             "construction": self.construction,
             "reference": self.reference,
             "area": self.area,
+            "age_band_id": self.age_band_id,
             "u_value": self.u_value,
             "proposed_u_value": self.proposed_u_value,
             "measure_id": self.measure_id,
@@ -391,6 +399,7 @@ class DoorElement(db.Model):
     height = db.Column(db.Float, default=0.0)
     width = db.Column(db.Float, default=0.0)
     qty = db.Column(db.Float, default=1.0)
+    age_band_id = db.Column(db.Integer, db.ForeignKey("age_band_u_value.id"))
     u_value = db.Column(db.Float, default=0.0)
 
     proposed_u_value = db.Column(db.Float)
@@ -409,6 +418,7 @@ class DoorElement(db.Model):
             "height": self.height,
             "width": self.width,
             "qty": self.qty,
+            "age_band_id": self.age_band_id,
             "u_value": self.u_value,
             "proposed_u_value": self.proposed_u_value,
             "measure_id": self.measure_id,
