@@ -60,11 +60,22 @@ export default function SiteMap({ project, room, ageBands, elementApi, refreshAl
   const [geoError, setGeoError] = useState(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [visible, setVisible] = useState({ wall: true, roof: true, floor: true });
-  const [drawMode, setDrawMode] = useState(null); // null | 'wall' | 'roof' | 'floor'
-  const [drawPoints, setDrawPoints] = useState([]);
-  const [finishedShape, setFinishedShape] = useState(null); // { type, points, measurement }
+
+  // The shape currently being placed/refined. `phase` is 'idle' (nothing in
+  // progress), 'drawing' (still clicking the map to append points), or
+  // 'reviewing' (attribute form open). `points` stays fully editable in both
+  // 'drawing' and 'reviewing' - clicking the line inserts a point, dragging a
+  // point moves it, clicking a point deletes it.
+  const [shapeKind, setShapeKind] = useState(null); // null | 'wall' | 'roof' | 'floor'
+  const [phase, setPhase] = useState("idle"); // 'idle' | 'drawing' | 'reviewing'
+  const [points, setPoints] = useState([]);
+  const [copiedLocation, setCopiedLocation] = useState("");
   const [showFloorPicker, setShowFloorPicker] = useState(false);
   const [floorSourceRoofId, setFloorSourceRoofId] = useState("");
+
+  const isWall = shapeKind === "wall";
+  const minPoints = isWall ? 2 : 3;
+  const measurement = isWall ? polylineLengthMetres(points) : polygonAreaSqMetres(points);
 
   const geocodeAndCenter = (address, { persist } = {}) => {
     setGeoError(null);
@@ -93,54 +104,77 @@ export default function SiteMap({ project, room, ageBands, elementApi, refreshAl
     geocodeAndCenter(searchQuery, { persist: true });
   };
 
-  const startDrawing = (type) => {
-    setDrawMode(type);
-    setDrawPoints([]);
-    setFinishedShape(null);
+  const startDrawing = (kind) => {
+    setShapeKind(kind);
+    setPhase("drawing");
+    setPoints([]);
+    setCopiedLocation("");
     setShowFloorPicker(false);
   };
 
-  const cancelDrawing = () => {
-    setDrawMode(null);
-    setDrawPoints([]);
+  const cancelShape = () => {
+    setShapeKind(null);
+    setPhase("idle");
+    setPoints([]);
+    setCopiedLocation("");
+    setFloorSourceRoofId("");
   };
 
-  const handleMapClick = (e) => {
-    if (!drawMode) return;
-    setDrawPoints((prev) => [...prev, { lat: e.latLng.lat(), lng: e.latLng.lng() }]);
+  // Clicking empty map background appends a new point to the end - only
+  // while actively placing the initial outline.
+  const handleMapBackgroundClick = (e) => {
+    if (phase !== "drawing") return;
+    setPoints((prev) => [...prev, { lat: e.latLng.lat(), lng: e.latLng.lng() }]);
+  };
+
+  // Clicking ON the line/outline itself inserts a new point along that edge -
+  // works throughout both 'drawing' and 'reviewing', so the shape can keep
+  // being refined right up until it's saved.
+  const handleShapeClick = (e) => {
+    if (phase !== "drawing" && phase !== "reviewing") return;
+    if (e.edge == null) return;
+    e.stop(); // don't also let this bubble up as a background map click
+    const newPoint = { lat: e.latLng.lat(), lng: e.latLng.lng() };
+    setPoints((prev) => {
+      const next = [...prev];
+      next.splice(e.edge + 1, 0, newPoint);
+      return next;
+    });
+  };
+
+  const movePoint = (index, latLng) => {
+    setPoints((prev) => prev.map((p, i) => (i === index ? { lat: latLng.lat(), lng: latLng.lng() } : p)));
+  };
+
+  const deletePoint = (index) => {
+    setPoints((prev) => prev.filter((_, i) => i !== index));
   };
 
   const finishDrawing = () => {
-    const measurement = drawMode === "wall" ? polylineLengthMetres(drawPoints) : polygonAreaSqMetres(drawPoints);
-    setFinishedShape({ type: drawMode, points: drawPoints, measurement });
-    setDrawMode(null);
+    if (points.length < minPoints) return;
+    setPhase("reviewing");
   };
 
   const copyFloorFromRoof = () => {
     const roof = room.roofs.find((r) => String(r.id) === String(floorSourceRoofId));
     if (!roof) return;
-    setFinishedShape({
-      type: "floor",
-      points: roof.geometry ? toLatLngLiterals(roof.geometry) : [],
-      measurement: roof.area || 0,
-      copiedLocation: roof.location,
-    });
+    setShapeKind("floor");
+    setPoints(roof.geometry ? toLatLngLiterals(roof.geometry) : []);
+    setCopiedLocation(roof.location || "");
+    setPhase("reviewing");
     setShowFloorPicker(false);
   };
 
   const handleAccept = async (fields) => {
-    const geometry = finishedShape.points.length ? finishedShape.points.map((p) => [p.lat, p.lng]) : null;
-    const type = finishedShape.type === "wall" ? "walls" : finishedShape.type === "roof" ? "roofs" : "floors";
+    const geometry = points.length ? points.map((p) => [p.lat, p.lng]) : null;
+    const type = shapeKind === "wall" ? "walls" : shapeKind === "roof" ? "roofs" : "floors";
     await elementApi(type).onAdd({ ...fields, geometry });
-    setFinishedShape(null);
-    setDrawPoints([]);
+    cancelShape();
     refreshAll();
   };
 
   const handleDiscard = () => {
-    setFinishedShape(null);
-    setDrawPoints([]);
-    setFloorSourceRoofId("");
+    cancelShape();
   };
 
   if (loadError) {
@@ -193,7 +227,7 @@ export default function SiteMap({ project, room, ageBands, elementApi, refreshAl
             center={center}
             zoom={20}
             mapTypeId="satellite"
-            onClick={handleMapClick}
+            onClick={handleMapBackgroundClick}
             options={MAP_OPTIONS}
           >
             {visible.wall &&
@@ -229,29 +263,41 @@ export default function SiteMap({ project, room, ageBands, elementApi, refreshAl
                   />
                 ))}
 
-            {drawMode === "wall" && drawPoints.length > 0 && (
-              <Polyline path={drawPoints} options={{ strokeColor: "#ff2d55", strokeWeight: 5 }} />
-            )}
-            {(drawMode === "roof" || drawMode === "floor") && drawPoints.length > 0 && (
-              <Polygon path={drawPoints} options={{ fillColor: "#ff2d55", strokeColor: "#ff2d55", fillOpacity: 0.3 }} />
-            )}
-            {drawMode &&
-              drawPoints.map((p, i) => (
-                <Marker key={`draw-pt-${i}`} position={p} icon={vertexIcon()} title={`Point ${i + 1}`} />
+            {/* The shape currently being placed/refined - a thin outline (no
+                fill) so it reads as a line you can manipulate, not a solid
+                area, right up until it's saved. */}
+            {phase !== "idle" &&
+              points.length > 0 &&
+              (isWall ? (
+                <Polyline
+                  path={points}
+                  options={{ strokeColor: "#ff2d55", strokeWeight: 4 }}
+                  onClick={handleShapeClick}
+                />
+              ) : (
+                <Polygon
+                  path={points}
+                  options={{ fillOpacity: 0, strokeColor: "#ff2d55", strokeWeight: 3 }}
+                  onClick={handleShapeClick}
+                />
               ))}
-            {finishedShape &&
-              (finishedShape.type === "wall" ? (
-                <Polyline path={finishedShape.points} options={{ strokeColor: "#ff2d55", strokeWeight: 5 }} />
-              ) : finishedShape.points.length > 0 ? (
-                <Polygon path={finishedShape.points} options={{ fillColor: "#ff2d55", strokeColor: "#ff2d55", fillOpacity: 0.3 }} />
-              ) : null)}
-            {finishedShape &&
-              finishedShape.points.map((p, i) => <Marker key={`finished-pt-${i}`} position={p} icon={vertexIcon()} />)}
+            {phase !== "idle" &&
+              points.map((p, i) => (
+                <Marker
+                  key={`pt-${i}`}
+                  position={p}
+                  icon={vertexIcon()}
+                  title={`Point ${i + 1} - drag to move, click to delete`}
+                  draggable
+                  onDragEnd={(e) => movePoint(i, e.latLng)}
+                  onClick={() => deletePoint(i)}
+                />
+              ))}
           </GoogleMap>
         </div>
 
         <div className="map-side-panel">
-          {!drawMode && !finishedShape && !showFloorPicker && (
+          {phase === "idle" && !showFloorPicker && (
             <>
               <h3>Add to map</h3>
               <button onClick={() => startDrawing("wall")}>+ Wall</button>
@@ -260,7 +306,7 @@ export default function SiteMap({ project, room, ageBands, elementApi, refreshAl
             </>
           )}
 
-          {showFloorPicker && !drawMode && !finishedShape && (
+          {showFloorPicker && phase === "idle" && (
             <>
               <h3>Add a floor</h3>
               <p className="muted">A floor is normally the same footprint as the roof above it.</p>
@@ -285,27 +331,39 @@ export default function SiteMap({ project, room, ageBands, elementApi, refreshAl
             </>
           )}
 
-          {drawMode && (
+          {phase === "drawing" && (
             <>
-              <h3>Drawing {drawMode === "wall" ? "a wall" : drawMode === "roof" ? "a roof" : "a floor"}</h3>
+              <h3>Drawing {isWall ? "a wall" : `a ${shapeKind}`}</h3>
               <p className="muted">
-                Click points along the {drawMode === "wall" ? "wall" : "outline"} on the map.
-                {drawMode !== "wall" && " Need at least 3 points."}
+                Click the map to add points. Click the line to insert a point along it, drag a point to move it, or
+                click a point to delete it.
+                {!isWall && " Need at least 3 points."}
               </p>
-              <p>{drawPoints.length} point(s) placed.</p>
+              <p>{points.length} point(s) placed.</p>
               <div className="map-attribute-actions">
-                <button onClick={finishDrawing} disabled={drawMode === "wall" ? drawPoints.length < 2 : drawPoints.length < 3}>
+                <button onClick={finishDrawing} disabled={points.length < minPoints}>
                   Finish
                 </button>
-                <button className="danger" onClick={cancelDrawing}>
+                <button className="danger" onClick={cancelShape}>
                   Cancel
                 </button>
               </div>
             </>
           )}
 
-          {finishedShape && (
-            <AttributeForm shape={finishedShape} ageBands={ageBands} onAccept={handleAccept} onCancel={handleDiscard} />
+          {phase === "reviewing" && (
+            <p className="muted">
+              Still adjustable on the map - drag a point, click the line to add one, or click a point to remove it.
+              The measurement below updates live.
+            </p>
+          )}
+          {phase === "reviewing" && (
+            <AttributeForm
+              shape={{ type: shapeKind, measurement, copiedLocation }}
+              ageBands={ageBands}
+              onAccept={handleAccept}
+              onCancel={handleDiscard}
+            />
           )}
         </div>
       </div>
