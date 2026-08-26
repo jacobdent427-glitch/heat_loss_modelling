@@ -1,9 +1,3 @@
-"""
-Combines the ORM models with the pure calculation functions in
-calculations.py to produce the "existing" vs "improved" heat-loss results for
-a plant room, plus the per-measure savings/payback table (the app's version
-of the "Overview of Heat Loss" sheet).
-"""
 from . import calculations as calc
 from .models import EmissionFactor
 
@@ -40,10 +34,6 @@ def _resolve_rates(plant_room):
 
 
 def _element_entries(plant_room):
-    """Builds a flat list of per-element dicts: type, id, area, existing_u,
-    improved_u, measure_id, location - one entry per fabric element,
-    including the window portion of each wall as a separate 'window' entry
-    (matching the workbook's independent Wall / Windows-and-doors tables)."""
     entries = []
 
     for w in plant_room.walls:
@@ -67,11 +57,6 @@ def _element_entries(plant_room):
                 "measure_id": w.window_measure_id,
             })
 
-    # A roof's entered area is its full footprint (same as the floor below
-    # it); any rooflights linked to it are glazed cut-outs, so their area is
-    # subtracted here to get the roof's own opaque area for its heat-loss
-    # contribution. The rooflights still contribute their own full area
-    # under the "rooflight" category, so nothing is double-counted or lost.
     rooflight_area_by_roof = {}
     for rl in plant_room.rooflights:
         if rl.roof_id:
@@ -173,9 +158,6 @@ def plant_room_results(plant_room):
     space_heating_kwh = calc.space_heating_gas_usage_kwh(plant_room.annual_fuel_usage_kwh, dhw_kwh, kitchen_kwh)
     unit_rate, emission_factor = _resolve_rates(plant_room)
 
-    # Per-measure savings: group individual elements (not whole categories)
-    # by the measure applied, so mixed measures within one category (e.g.
-    # two different wall upgrades) are still attributed correctly.
     measure_groups = {}
     for e in entries:
         if not e["measure_id"]:
@@ -247,10 +229,6 @@ def plant_room_results(plant_room):
 
 
 def apply_measure_cost_analysis(measure_results, measures_by_id):
-    """Adds cost-of-improvement / payback / lifetime-carbon-saving /
-    cost-per-tonne-CO2e fields, given an {id: ImprovementMeasure} lookup.
-    Kept separate from plant_room_results so routes can override cost/m2 or
-    lifetime per-application without re-running the heat-loss maths."""
     enriched = []
     for m in measure_results:
         measure = measures_by_id.get(m["measure_id"])
@@ -275,10 +253,6 @@ def apply_measure_cost_analysis(measure_results, measures_by_id):
     return enriched
 
 
-# Standard measure to apply per fabric category, matching the project brief's
-# default upgrade path (floor insulation is deliberately excluded - "never
-# recommended"; rooflights and doors have no standard measure in the
-# reference table so are left for manual review).
 WALL_MEASURE_NAME = "Cavity wall insulation"
 WINDOW_MEASURE_NAME = "Double glazing with metal or plastic frames"
 ROOF_MEASURE_NAME = "Roof insulation"
@@ -286,17 +260,6 @@ LOFT_MEASURE_NAME = "Loft insulation"
 
 
 def auto_propose_plant_room(plant_room, measures_by_name):
-    """Automates the 'proposed building' step: for every element whose
-    existing U-value is worse than the standard measure's typical achievable
-    U-value, and which doesn't already have a proposed value set, apply that
-    measure and its typical U-value as the proposal.
-
-    Only fills fields that are currently blank, so it never overwrites a
-    value the user has already reviewed/edited/accepted - clearing a
-    proposed field back out is how the user "discards" a suggestion, and
-    editing the pre-filled value afterwards is how they "accept and edit"
-    it, per the project brief.
-    """
     changes = []
 
     def maybe_apply(element, existing_u, proposed_attr, measure_attr, measure_name, category, label):

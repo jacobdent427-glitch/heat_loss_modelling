@@ -1,20 +1,5 @@
 import { useEffect, useState } from "react";
 
-/**
- * Generic spreadsheet-like editable table.
- *
- * columns: [{ key, label, type: 'text'|'number'|'checkbox'|'select'|'readonly', options?, width?,
- *              onSelect?: (value, row) => extraFieldsObject, format?: (value, row) => displayValue }]
- *   `onSelect` lets a select column (e.g. an age-band picker) derive/pre-fill other fields
- *   (e.g. the U-value) in the same row when it changes - the result is merged into both the
- *   local row state and the update sent to the server.
- * rows: array of row objects (must include `id`)
- * onUpdate(id, partialFields), onDelete(id), onAdd(newRowFields)
- * newRowDefaults: object of default values for the add-row form
- * hideAddRow / hideDeleteColumn: hide the add-new-row form / per-row delete button, for tables
- *   that edit fields on existing rows only (e.g. the fabric-improvements view over elements
- *   already created elsewhere).
- */
 export default function EditableTable({ columns, rows, onUpdate, onDelete, onAdd, newRowDefaults, hideAddRow, hideDeleteColumn }) {
   const [localRows, setLocalRows] = useState(rows);
   const [newRow, setNewRow] = useState(newRowDefaults);
@@ -32,7 +17,6 @@ export default function EditableTable({ columns, rows, onUpdate, onDelete, onAdd
     return value;
   };
 
-  // Handles select/checkbox changes (commit immediately) and text/number local edits.
   const makeHandlers = (row, col, setRowState) => ({
     onLocalChange: (val) => setRowState((prev) => ({ ...prev, [col.key]: val })),
     onCommit: (val) => {

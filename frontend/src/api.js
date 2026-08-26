@@ -10,9 +10,7 @@ async function request(path, options = {}) {
     try {
       const data = await res.json();
       msg = data.error || msg;
-    } catch {
-      /* ignore */
-    }
+    } catch {}
     throw new Error(msg);
   }
   if (res.status === 204) return null;

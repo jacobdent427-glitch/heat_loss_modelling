@@ -8,9 +8,6 @@ from . import api_bp
 
 @api_bp.get("/projects/<int:project_id>/overview")
 def project_overview(project_id):
-    """The app's equivalent of the 'Overview of Heat Loss' sheet: rolls up
-    every plant room's existing vs improved peak heat loss and the combined
-    fabric-improvement savings/payback table for the whole project."""
     project = db.get_or_404(Project, project_id)
     rooms = PlantRoom.query.filter_by(project_id=project_id).order_by(PlantRoom.id).all()
     measures_by_id = {m.id: m for m in ImprovementMeasure.query.all()}

@@ -1,11 +1,3 @@
-"""Seed reference data: fuel emission factors, fabric improvement measures,
-floor U-value interpolation points, and default age-band U-values.
-
-All of this is editable later through the /api/reference-data endpoints -
-these are starting defaults, not fixed truths, and should be checked against
-your current CIBSE/BEIS/Building Regs source documents before relying on
-them for a real HDP.
-"""
 from .extensions import db
 from .models import EmissionFactor, ImprovementMeasure, FloorUValueReferencePoint, AgeBandUValue
 
@@ -56,8 +48,6 @@ def seed_improvement_measures():
              u_value_guidance="Pitched roof (ceiling level): 0.16. Pitched roof (rafter level): 0.18. Flat roof / integral insulation: 0.18."),
         dict(name="Secondary glazing", applies_to="window", lifetime_years=7.92, cost_per_m2=None,
              cost_guidance=None, typical_u_value=None, u_value_guidance=None),
-        # Floor insulation intentionally omitted - "never recommended" per
-        # project brief (expensive, disruptive, poor cost-effectiveness).
     ]
     for r in rows:
         db.session.add(ImprovementMeasure(**r))
@@ -67,10 +57,6 @@ def seed_improvement_measures():
 def seed_floor_u_value_reference_points():
     if FloorUValueReferencePoint.query.count() > 0:
         return
-    # Exactly the grid points present in the source workbook's "U Value
-    # Floor Calculator" tab (Table C1 extract). Add more p/a-ratio rows and
-    # resistance columns from your BRE/ISO 13370 source as needed - the
-    # interpolation endpoint works with however many points exist.
     rows = [
         dict(p_a_ratio=0.05, resistance=0.0, u_value=0.16),
         dict(p_a_ratio=0.05, resistance=0.5, u_value=0.14),
@@ -85,13 +71,6 @@ def seed_floor_u_value_reference_points():
 def seed_age_band_u_values():
     if AgeBandUValue.query.count() > 0:
         return
-    # Extracted from the project brief's historic fabric U-value table. The
-    # header row above these columns was cropped in the source image, so
-    # only the final column's label ("2013 & 2016") was legible; the other
-    # period labels below are our best reconstruction of the standard UK
-    # non-domestic Building Regulations Part L compliance periods and
-    # SHOULD BE VERIFIED against your CIBSE/Approved Document L source
-    # before relying on them for a real HDP.
     rows = [
         dict(period_label="Pre-1976", sort_order=1, wall_u=1.7, floor_u=None, pitched_roof_u=1.4, flat_roof_u=None,
              window_metal_u=None, window_other_u=None, window_area_pct_note=None,

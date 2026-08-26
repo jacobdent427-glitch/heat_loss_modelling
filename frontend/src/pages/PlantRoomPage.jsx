@@ -67,9 +67,6 @@ export default function PlantRoomPage() {
   const findAgeBand = (id) => ageBands.find((a) => String(a.id) === String(id));
   const findMeasure = (id) => measures.find((m) => String(m.id) === String(id));
 
-  // Derives U-value(s) from the selected age band + the row's current type fields
-  // (roof_type / door_type / window_frame_type), pre-filling the "existing" U-value
-  // while leaving it fully editable afterwards.
   const ageBandDerivers = {
     wall: (row) => {
       const band = findAgeBand(row.age_band_id);
@@ -93,7 +90,6 @@ export default function PlantRoomPage() {
     },
   };
 
-  // Auto-fills the proposed U-value from a chosen measure's typical U-value.
   const measureDeriver = (proposedField) => (measureId) => {
     const measure = findMeasure(measureId);
     if (!measure || measure.typical_u_value == null) return {};
@@ -115,11 +111,6 @@ export default function PlantRoomPage() {
     },
   });
 
-  // Roofs/rooflights/floors typically share the same footprint, so these
-  // copy areas across instead of making the user re-measure and retype the
-  // same number in three places. They only ADD rows for locations that
-  // don't already exist elsewhere (matched by name) - they never overwrite
-  // an existing row, so re-running is always safe.
   const syncFloorsFromRoofs = async () => {
     const existingNames = new Set(room.floors.map((f) => (f.location || "").trim().toLowerCase()).filter(Boolean));
     const toCreate = room.roofs.filter((r) => r.location && !existingNames.has(r.location.trim().toLowerCase()));
@@ -450,8 +441,6 @@ function SettingsTab({ room, onSave }) {
     api.listEmissionFactors().then(setEmissionFactors);
   }, []);
 
-  // Pre-fill a blank unit rate as soon as we know both the room's fuel type
-  // and the reference rates, so the field never sits empty/hidden-fallback.
   useEffect(() => {
     if (form.unit_rate_per_kwh != null || emissionFactors.length === 0) return;
     const defaultRate = emissionFactors.find((f) => f.fuel_type === form.fuel_type)?.unit_rate_per_kwh;
@@ -489,10 +478,6 @@ function SettingsTab({ room, onSave }) {
             value={form.fuel_type || ""}
             onChange={(e) => {
               const fuelType = e.target.value;
-              // Pre-fill the unit rate from this fuel's reference-data default
-              // whenever it's currently blank, so the field always shows a
-              // real rate rather than silently falling back behind the
-              // scenes - still fully editable/overridable afterwards.
               const defaultRate = emissionFactors.find((f) => f.fuel_type === fuelType)?.unit_rate_per_kwh;
               const overrides = { fuel_type: fuelType };
               if ((form.unit_rate_per_kwh === null || form.unit_rate_per_kwh === undefined) && defaultRate != null) {

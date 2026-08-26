@@ -6,11 +6,6 @@ from flask import jsonify, request
 
 from . import api_bp
 
-# Free OpenStreetMap geocoder - no API key needed. Nominatim's usage policy
-# just asks for a real User-Agent identifying the app and reasonable
-# request volume (https://operations.osmfoundation.org/policies/nominatim/),
-# both of which are trivially satisfied by a single-user internal tool
-# geocoding a project address once when it's created.
 NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
 USER_AGENT = "BTG-Eddisons-HeatLossModellingApp/1.0 (internal survey tool)"
 

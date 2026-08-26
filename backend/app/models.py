@@ -43,19 +43,16 @@ class PlantRoom(db.Model):
     project_id = db.Column(db.Integer, db.ForeignKey("project.id"), nullable=False)
     name = db.Column(db.String(200), nullable=False)
 
-    # Fuel / energy usage
     fuel_type = db.Column(db.String(50), default="Natural gas")
     annual_fuel_usage_kwh = db.Column(db.Float, default=0.0)
-    unit_rate_per_kwh = db.Column(db.Float)  # overrides EmissionFactor default when set
+    unit_rate_per_kwh = db.Column(db.Float)
     standing_charge_per_day = db.Column(db.Float)
     boiler_efficiency = db.Column(db.Float, default=0.85)
 
-    # Kitchen gas usage
     uses_gas_kitchen = db.Column(db.Boolean, default=False)
     kitchen_gas_pct = db.Column(db.Float, default=0.02)
 
-    # DHW
-    dhw_method = db.Column(db.String(30), default="manual")  # manual | summer_baseload | tank_size
+    dhw_method = db.Column(db.String(30), default="manual")
     dhw_manual_kwh = db.Column(db.Float, default=0.0)
     dhw_summer_baseload_kwh_month = db.Column(db.Float)
     dhw_tank_volume_litres = db.Column(db.Float)
@@ -63,7 +60,6 @@ class PlantRoom(db.Model):
     dhw_tank_cycles_per_day = db.Column(db.Float, default=1.0)
     dhw_efficiency = db.Column(db.Float, default=0.85)
 
-    # Ventilation & design conditions
     ach = db.Column(db.Float, default=0.5)
     internal_setpoint_c = db.Column(db.Float, default=20.0)
     external_design_temp_c = db.Column(db.Float, default=-4.0)
@@ -106,10 +102,6 @@ class PlantRoom(db.Model):
 
 
 class Zone(db.Model):
-    """Used for the volume calculation (Volume = sum of area * height per
-    zone), entered directly per the app spec ('the app should calculate the
-    volume ... which you enter to give final heat loss')."""
-
     id = db.Column(db.Integer, primary_key=True)
     plant_room_id = db.Column(db.Integer, db.ForeignKey("plant_room.id"), nullable=False)
     name = db.Column(db.String(200), nullable=False)
@@ -128,12 +120,9 @@ class Zone(db.Model):
 
 
 class ImprovementMeasure(db.Model):
-    """Reference table of building fabric improvement measures (Table 18 /
-    Overview of Heat Loss A37:F45), editable and extendable by the user."""
-
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(200), nullable=False, unique=True)
-    applies_to = db.Column(db.String(100), default="")  # comma list: wall,window,roof,rooflight,door
+    applies_to = db.Column(db.String(100), default="")
     lifetime_years = db.Column(db.Float)
     cost_per_m2 = db.Column(db.Float)
     cost_guidance = db.Column(db.Text)
@@ -156,8 +145,6 @@ class ImprovementMeasure(db.Model):
 
 
 class EmissionFactor(db.Model):
-    """Fuel reference table (Existing energy usage K13:N16 / K22:N25)."""
-
     id = db.Column(db.Integer, primary_key=True)
     fuel_type = db.Column(db.String(50), nullable=False, unique=True)
     unit_rate_per_kwh = db.Column(db.Float)
@@ -179,11 +166,6 @@ class EmissionFactor(db.Model):
 
 
 class FloorUValueReferencePoint(db.Model):
-    """Grid points for the floor U-value interpolation (BRE/ISO 13370
-    'Table C1'). Seeded with only the points the source workbook actually
-    used - extend via the reference-data screen with more points from your
-    CIBSE/BRE source table as needed."""
-
     id = db.Column(db.Integer, primary_key=True)
     p_a_ratio = db.Column(db.Float, nullable=False)
     resistance = db.Column(db.Float, nullable=False)
@@ -199,12 +181,6 @@ class FloorUValueReferencePoint(db.Model):
 
 
 class AgeBandUValue(db.Model):
-    """Default U-values by building age band (docx Table of historic Part L
-    fabric standards), used to pre-fill new elements. Fully editable - the
-    period labels for some columns could not be recovered from the cropped
-    source image, so review these against your CIBSE/Building Regs
-    reference before relying on them."""
-
     id = db.Column(db.Integer, primary_key=True)
     period_label = db.Column(db.String(100), nullable=False)
     sort_order = db.Column(db.Integer, default=0)
@@ -239,10 +215,6 @@ class AgeBandUValue(db.Model):
         }
 
 
-# ---------------------------------------------------------------------------
-# Building fabric elements
-# ---------------------------------------------------------------------------
-
 class WallElement(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     plant_room_id = db.Column(db.Integer, db.ForeignKey("plant_room.id"), nullable=False)
@@ -264,9 +236,6 @@ class WallElement(db.Model):
     wall_measure_id = db.Column(db.Integer, db.ForeignKey("improvement_measure.id"))
     window_measure_id = db.Column(db.Integer, db.ForeignKey("improvement_measure.id"))
 
-    # Drawn wall line on the site map, as a list of [lat, lng] points. Its
-    # measured length feeds `width` (the plan-view run) - height still has
-    # to be surveyed, a satellite view can't see it.
     geometry = db.Column(db.JSON)
 
     notes = db.Column(db.Text)
@@ -310,8 +279,6 @@ class RoofElement(db.Model):
     proposed_u_value = db.Column(db.Float)
     measure_id = db.Column(db.Integer, db.ForeignKey("improvement_measure.id"))
 
-    # Drawn roof outline on the site map, as a list of [lat, lng] points.
-    # Its measured area feeds `area` directly.
     geometry = db.Column(db.JSON)
 
     notes = db.Column(db.Text)
@@ -339,9 +306,6 @@ class RoofLightElement(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     plant_room_id = db.Column(db.Integer, db.ForeignKey("plant_room.id"), nullable=False)
 
-    # A rooflight is a glazed cut-out within a roof - linking it lets the
-    # calc engine subtract its area from that roof's opaque area, so the
-    # same footprint isn't counted as both solid roof and rooflight.
     roof_id = db.Column(db.Integer, db.ForeignKey("roof_element.id"))
 
     location = db.Column(db.String(200))
@@ -386,13 +350,9 @@ class FloorElement(db.Model):
     age_band_id = db.Column(db.Integer, db.ForeignKey("age_band_u_value.id"))
     u_value = db.Column(db.Float, default=0.0)
 
-    # Floor insulation is deliberately not recommended in the improvement
-    # workflow, but the field exists for completeness / manual override.
     proposed_u_value = db.Column(db.Float)
     measure_id = db.Column(db.Integer, db.ForeignKey("improvement_measure.id"))
 
-    # Drawn floor outline on the site map (usually copied from the roof
-    # above it via "Copy areas from roofs" instead of drawn separately).
     geometry = db.Column(db.JSON)
 
     notes = db.Column(db.Text)

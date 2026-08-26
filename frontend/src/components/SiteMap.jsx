@@ -1,15 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useJsApiLoader, GoogleMap, Polygon, Polyline, Marker } from "@react-google-maps/api";
 import { api } from "../api";
 
 const GOOGLE_LIBRARIES = ["geometry"];
-const DEFAULT_CENTER = { lat: 51.5074, lng: -0.1278 }; // London - used only until the project's address geocodes
+const DEFAULT_CENTER = { lat: 51.5074, lng: -0.1278 };
 const MAP_CONTAINER_STYLE = { width: "100%", height: "600px" };
 const LAYER_COLORS = { wall: "#e8a543", roof: "#3388ff", floor: "#2ecc71" };
-// Defined once at module scope (not inline in JSX) so it's never a "new" object
-// on re-render - a fresh object every render can cause the map to re-apply
-// options and fight with the mapTypeId. mapTypeId lives in the options object
-// itself (the most reliable place for it) as well as the mapTypeId prop.
 const MAP_OPTIONS = {
   mapTypeId: "satellite",
   streetViewControl: false,
@@ -21,9 +17,6 @@ function toLatLngLiterals(pairs) {
   return pairs.map(([lat, lng]) => ({ lat, lng }));
 }
 
-// Small dot marking exactly where a drawn vertex landed. Built lazily (not a
-// module-level constant) since it needs window.google.maps, which only
-// exists once the script has loaded.
 function vertexIcon() {
   return {
     path: window.google.maps.SymbolPath.CIRCLE,
@@ -49,6 +42,37 @@ function polygonAreaSqMetres(points) {
   return window.google.maps.geometry.spherical.computeArea(points.map((p) => new window.google.maps.LatLng(p)));
 }
 
+function pointToSegmentDistSq(p, a, b) {
+  const dx = b.lng - a.lng;
+  const dy = b.lat - a.lat;
+  if (dx === 0 && dy === 0) {
+    const ddx = p.lng - a.lng;
+    const ddy = p.lat - a.lat;
+    return ddx * ddx + ddy * ddy;
+  }
+  let t = ((p.lng - a.lng) * dx + (p.lat - a.lat) * dy) / (dx * dx + dy * dy);
+  t = Math.max(0, Math.min(1, t));
+  const ddx = p.lng - (a.lng + t * dx);
+  const ddy = p.lat - (a.lat + t * dy);
+  return ddx * ddx + ddy * ddy;
+}
+
+function nearestEdgeIndex(points, click, closed) {
+  const segCount = closed ? points.length : points.length - 1;
+  let best = 0;
+  let bestDist = Infinity;
+  for (let i = 0; i < segCount; i++) {
+    const a = points[i];
+    const b = points[(i + 1) % points.length];
+    const d = pointToSegmentDistSq(click, a, b);
+    if (d < bestDist) {
+      bestDist = d;
+      best = i;
+    }
+  }
+  return best;
+}
+
 export default function SiteMap({ project, room, ageBands, elementApi, refreshAll }) {
   const { isLoaded, loadError } = useJsApiLoader({
     id: "google-map-script",
@@ -61,13 +85,8 @@ export default function SiteMap({ project, room, ageBands, elementApi, refreshAl
   const [searchQuery, setSearchQuery] = useState("");
   const [visible, setVisible] = useState({ wall: true, roof: true, floor: true });
 
-  // The shape currently being placed/refined. `phase` is 'idle' (nothing in
-  // progress), 'drawing' (still clicking the map to append points), or
-  // 'reviewing' (attribute form open). `points` stays fully editable in both
-  // 'drawing' and 'reviewing' - clicking the line inserts a point, dragging a
-  // point moves it, clicking a point deletes it.
-  const [shapeKind, setShapeKind] = useState(null); // null | 'wall' | 'roof' | 'floor'
-  const [phase, setPhase] = useState("idle"); // 'idle' | 'drawing' | 'reviewing'
+  const [shapeKind, setShapeKind] = useState(null);
+  const [phase, setPhase] = useState("idle");
   const [points, setPoints] = useState([]);
   const [copiedLocation, setCopiedLocation] = useState("");
   const [showFloorPicker, setShowFloorPicker] = useState(false);
@@ -76,6 +95,11 @@ export default function SiteMap({ project, room, ageBands, elementApi, refreshAl
   const isWall = shapeKind === "wall";
   const minPoints = isWall ? 2 : 3;
   const measurement = isWall ? polylineLengthMetres(points) : polygonAreaSqMetres(points);
+
+  const phaseRef = useRef(phase);
+  phaseRef.current = phase;
+  const isWallRef = useRef(isWall);
+  isWallRef.current = isWall;
 
   const geocodeAndCenter = (address, { persist } = {}) => {
     setGeoError(null);
@@ -120,24 +144,19 @@ export default function SiteMap({ project, room, ageBands, elementApi, refreshAl
     setFloorSourceRoofId("");
   };
 
-  // Clicking empty map background appends a new point to the end - only
-  // while actively placing the initial outline.
   const handleMapBackgroundClick = (e) => {
-    if (phase !== "drawing") return;
+    if (phaseRef.current !== "drawing") return;
     setPoints((prev) => [...prev, { lat: e.latLng.lat(), lng: e.latLng.lng() }]);
   };
 
-  // Clicking ON the line/outline itself inserts a new point along that edge -
-  // works throughout both 'drawing' and 'reviewing', so the shape can keep
-  // being refined right up until it's saved.
   const handleShapeClick = (e) => {
-    if (phase !== "drawing" && phase !== "reviewing") return;
-    if (e.edge == null) return;
-    e.stop(); // don't also let this bubble up as a background map click
+    if (phaseRef.current !== "drawing" && phaseRef.current !== "reviewing") return;
+    e.stop();
     const newPoint = { lat: e.latLng.lat(), lng: e.latLng.lng() };
     setPoints((prev) => {
+      const edge = e.edge != null ? e.edge : nearestEdgeIndex(prev, newPoint, !isWallRef.current);
       const next = [...prev];
-      next.splice(e.edge + 1, 0, newPoint);
+      next.splice(edge + 1, 0, newPoint);
       return next;
     });
   };
@@ -263,9 +282,6 @@ export default function SiteMap({ project, room, ageBands, elementApi, refreshAl
                   />
                 ))}
 
-            {/* The shape currently being placed/refined - a thin outline (no
-                fill) so it reads as a line you can manipulate, not a solid
-                area, right up until it's saved. */}
             {phase !== "idle" &&
               points.length > 0 &&
               (isWall ? (
