@@ -1,96 +1,53 @@
 import { useEffect, useState } from "react";
-import { MapContainer, TileLayer, Polygon, Polyline, Popup, useMap } from "react-leaflet";
-import L from "leaflet";
-import "leaflet-draw";
+import { useJsApiLoader, GoogleMap, Polygon, Polyline } from "@react-google-maps/api";
 import { api } from "../api";
 
-const DEFAULT_CENTER = [51.5074, -0.1278]; // London - used only until the project's address geocodes
-const ESRI_SATELLITE_URL =
-  "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}";
-const ESRI_ATTRIBUTION =
-  "Tiles &copy; Esri &mdash; Source: Esri, Maxar, Earthstar Geographics, and the GIS User Community";
-
+const GOOGLE_LIBRARIES = ["geometry"];
+const DEFAULT_CENTER = { lat: 51.5074, lng: -0.1278 }; // London - used only until the project's address geocodes
+const MAP_CONTAINER_STYLE = { width: "100%", height: "600px" };
 const LAYER_COLORS = { wall: "#e8a543", roof: "#3388ff", floor: "#2ecc71" };
 
-function polylineLengthMetres(latlngs) {
+function toLatLngLiterals(pairs) {
+  return pairs.map(([lat, lng]) => ({ lat, lng }));
+}
+
+function polylineLengthMetres(points) {
+  const g = window.google.maps.geometry.spherical;
   let total = 0;
-  for (let i = 1; i < latlngs.length; i++) total += latlngs[i - 1].distanceTo(latlngs[i]);
+  for (let i = 1; i < points.length; i++) {
+    total += g.computeDistanceBetween(new window.google.maps.LatLng(points[i - 1]), new window.google.maps.LatLng(points[i]));
+  }
   return total;
 }
 
-// Equirectangular-projection shoelace formula. Flattening error is
-// negligible at building scale (tens to low hundreds of metres across).
-function polygonAreaSqMetres(latlngs) {
-  if (latlngs.length < 3) return 0;
-  const R = 6378137;
-  const toRad = (d) => (d * Math.PI) / 180;
-  const lat0 = toRad(latlngs[0].lat);
-  const pts = latlngs.map((p) => [R * toRad(p.lng) * Math.cos(lat0), R * toRad(p.lat)]);
-  let area = 0;
-  for (let i = 0; i < pts.length; i++) {
-    const [x1, y1] = pts[i];
-    const [x2, y2] = pts[(i + 1) % pts.length];
-    area += x1 * y2 - x2 * y1;
-  }
-  return Math.abs(area / 2);
-}
-
-function DrawTools({ onShapeDrawn }) {
-  const map = useMap();
-
-  useEffect(() => {
-    const drawControl = new L.Control.Draw({
-      position: "topleft",
-      draw: {
-        polygon: { allowIntersection: false, showArea: false, shapeOptions: { color: LAYER_COLORS.roof } },
-        polyline: { shapeOptions: { color: LAYER_COLORS.wall, weight: 4 } },
-        rectangle: false,
-        circle: false,
-        circlemarker: false,
-        marker: false,
-      },
-      edit: false,
-    });
-    map.addControl(drawControl);
-
-    const handleCreated = (e) => {
-      const latlngs = e.layerType === "polygon" ? e.layer.getLatLngs()[0] : e.layer.getLatLngs();
-      onShapeDrawn({ layerType: e.layerType, latlngs });
-    };
-    map.on(L.Draw.Event.CREATED, handleCreated);
-
-    return () => {
-      map.off(L.Draw.Event.CREATED, handleCreated);
-      map.removeControl(drawControl);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [map]);
-
-  return null;
-}
-
-function Recenter({ center }) {
-  const map = useMap();
-  useEffect(() => {
-    map.setView(center, map.getZoom());
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [center[0], center[1]]);
-  return null;
+function polygonAreaSqMetres(points) {
+  if (points.length < 3) return 0;
+  return window.google.maps.geometry.spherical.computeArea(points.map((p) => new window.google.maps.LatLng(p)));
 }
 
 export default function SiteMap({ project, room, ageBands, elementApi, refreshAll }) {
+  const { isLoaded, loadError } = useJsApiLoader({
+    id: "google-map-script",
+    googleMapsApiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY,
+    libraries: GOOGLE_LIBRARIES,
+  });
+
   const [center, setCenter] = useState(DEFAULT_CENTER);
   const [geoError, setGeoError] = useState(null);
   const [searchQuery, setSearchQuery] = useState("");
-  const [pendingShape, setPendingShape] = useState(null);
   const [visible, setVisible] = useState({ wall: true, roof: true, floor: true });
+  const [drawMode, setDrawMode] = useState(null); // null | 'wall' | 'roof' | 'floor'
+  const [drawPoints, setDrawPoints] = useState([]);
+  const [finishedShape, setFinishedShape] = useState(null); // { type, points, measurement }
+  const [showFloorPicker, setShowFloorPicker] = useState(false);
+  const [floorSourceRoofId, setFloorSourceRoofId] = useState("");
 
   const geocodeAndCenter = (address, { persist } = {}) => {
     setGeoError(null);
     return api
       .geocode(address)
       .then((res) => {
-        setCenter([res.latitude, res.longitude]);
+        setCenter({ lat: res.latitude, lng: res.longitude });
         if (persist) api.updateProject(project.id, { latitude: res.latitude, longitude: res.longitude });
       })
       .catch((e) => setGeoError(e.message));
@@ -98,7 +55,7 @@ export default function SiteMap({ project, room, ageBands, elementApi, refreshAl
 
   useEffect(() => {
     if (project.latitude != null && project.longitude != null) {
-      setCenter([project.latitude, project.longitude]);
+      setCenter({ lat: project.latitude, lng: project.longitude });
       return;
     }
     if (!project.address) return;
@@ -112,19 +69,62 @@ export default function SiteMap({ project, room, ageBands, elementApi, refreshAl
     geocodeAndCenter(searchQuery, { persist: true });
   };
 
-  const handleShapeDrawn = (shape) => {
-    const measurement =
-      shape.layerType === "polyline" ? polylineLengthMetres(shape.latlngs) : polygonAreaSqMetres(shape.latlngs);
-    setPendingShape({ ...shape, measurement });
+  const startDrawing = (type) => {
+    setDrawMode(type);
+    setDrawPoints([]);
+    setFinishedShape(null);
+    setShowFloorPicker(false);
   };
 
-  const handleAccept = async (elementType, fields) => {
-    const geometry = pendingShape.latlngs.map((p) => [p.lat, p.lng]);
-    const type = elementType === "wall" ? "walls" : elementType === "roof" ? "roofs" : "floors";
+  const cancelDrawing = () => {
+    setDrawMode(null);
+    setDrawPoints([]);
+  };
+
+  const handleMapClick = (e) => {
+    if (!drawMode) return;
+    setDrawPoints((prev) => [...prev, { lat: e.latLng.lat(), lng: e.latLng.lng() }]);
+  };
+
+  const finishDrawing = () => {
+    const measurement = drawMode === "wall" ? polylineLengthMetres(drawPoints) : polygonAreaSqMetres(drawPoints);
+    setFinishedShape({ type: drawMode, points: drawPoints, measurement });
+    setDrawMode(null);
+  };
+
+  const copyFloorFromRoof = () => {
+    const roof = room.roofs.find((r) => String(r.id) === String(floorSourceRoofId));
+    if (!roof) return;
+    setFinishedShape({
+      type: "floor",
+      points: roof.geometry ? toLatLngLiterals(roof.geometry) : [],
+      measurement: roof.area || 0,
+      copiedLocation: roof.location,
+    });
+    setShowFloorPicker(false);
+  };
+
+  const handleAccept = async (fields) => {
+    const geometry = finishedShape.points.length ? finishedShape.points.map((p) => [p.lat, p.lng]) : null;
+    const type = finishedShape.type === "wall" ? "walls" : finishedShape.type === "roof" ? "roofs" : "floors";
     await elementApi(type).onAdd({ ...fields, geometry });
-    setPendingShape(null);
+    setFinishedShape(null);
+    setDrawPoints([]);
     refreshAll();
   };
+
+  const handleDiscard = () => {
+    setFinishedShape(null);
+    setDrawPoints([]);
+    setFloorSourceRoofId("");
+  };
+
+  if (loadError) {
+    return <p className="error">Failed to load Google Maps: {loadError.message}</p>;
+  }
+  if (!isLoaded) {
+    return <p>Loading map...</p>;
+  }
 
   return (
     <div className="site-map">
@@ -162,83 +162,133 @@ export default function SiteMap({ project, room, ageBands, elementApi, refreshAl
         ))}
       </div>
 
-      <div className="map-wrap">
-        <MapContainer center={center} zoom={19} maxZoom={21} style={{ height: "600px", width: "100%" }}>
-          <TileLayer url={ESRI_SATELLITE_URL} attribution={ESRI_ATTRIBUTION} maxZoom={21} maxNativeZoom={19} />
-          <Recenter center={center} />
-          <DrawTools onShapeDrawn={handleShapeDrawn} />
+      <div className="map-with-panel">
+        <div className="map-wrap">
+          <GoogleMap
+            mapContainerStyle={MAP_CONTAINER_STYLE}
+            center={center}
+            zoom={20}
+            mapTypeId="satellite"
+            onClick={handleMapClick}
+            options={{ streetViewControl: false, mapTypeControl: false, fullscreenControl: false }}
+          >
+            {visible.wall &&
+              room.walls
+                .filter((w) => w.geometry)
+                .map((w) => (
+                  <Polyline
+                    key={`wall-${w.id}`}
+                    path={toLatLngLiterals(w.geometry)}
+                    options={{ strokeColor: LAYER_COLORS.wall, strokeWeight: 4 }}
+                  />
+                ))}
 
-          {visible.wall &&
-            room.walls
-              .filter((w) => w.geometry)
-              .map((w) => (
-                <Polyline key={`wall-${w.id}`} positions={w.geometry} color={LAYER_COLORS.wall} weight={4}>
-                  <Popup>
-                    <strong>{w.location || "Wall"}</strong>
-                    <br />
-                    Width: {w.width?.toFixed(2)} m
-                    <br />
-                    Wall U: {w.wall_u_value}
-                  </Popup>
-                </Polyline>
-              ))}
+            {visible.roof &&
+              room.roofs
+                .filter((r) => r.geometry)
+                .map((r) => (
+                  <Polygon
+                    key={`roof-${r.id}`}
+                    path={toLatLngLiterals(r.geometry)}
+                    options={{ fillColor: LAYER_COLORS.roof, strokeColor: LAYER_COLORS.roof, fillOpacity: 0.35 }}
+                  />
+                ))}
 
-          {visible.roof &&
-            room.roofs
-              .filter((r) => r.geometry)
-              .map((r) => (
-                <Polygon key={`roof-${r.id}`} positions={r.geometry} color={LAYER_COLORS.roof}>
-                  <Popup>
-                    <strong>{r.location || "Roof"}</strong>
-                    <br />
-                    Area: {r.area?.toFixed(2)} m2
-                    <br />
-                    U value: {r.u_value}
-                  </Popup>
-                </Polygon>
-              ))}
+            {visible.floor &&
+              room.floors
+                .filter((f) => f.geometry)
+                .map((f) => (
+                  <Polygon
+                    key={`floor-${f.id}`}
+                    path={toLatLngLiterals(f.geometry)}
+                    options={{ fillColor: LAYER_COLORS.floor, strokeColor: LAYER_COLORS.floor, fillOpacity: 0.35 }}
+                  />
+                ))}
 
-          {visible.floor &&
-            room.floors
-              .filter((f) => f.geometry)
-              .map((f) => (
-                <Polygon key={`floor-${f.id}`} positions={f.geometry} color={LAYER_COLORS.floor}>
-                  <Popup>
-                    <strong>{f.location || "Floor"}</strong>
-                    <br />
-                    Area: {f.area?.toFixed(2)} m2
-                    <br />
-                    U value: {f.u_value}
-                  </Popup>
-                </Polygon>
-              ))}
+            {drawMode === "wall" && drawPoints.length > 0 && (
+              <Polyline path={drawPoints} options={{ strokeColor: "#ff2d55", strokeWeight: 5 }} />
+            )}
+            {(drawMode === "roof" || drawMode === "floor") && drawPoints.length > 0 && (
+              <Polygon path={drawPoints} options={{ fillColor: "#ff2d55", strokeColor: "#ff2d55", fillOpacity: 0.3 }} />
+            )}
+            {finishedShape &&
+              (finishedShape.type === "wall" ? (
+                <Polyline path={finishedShape.points} options={{ strokeColor: "#ff2d55", strokeWeight: 5 }} />
+              ) : finishedShape.points.length > 0 ? (
+                <Polygon path={finishedShape.points} options={{ fillColor: "#ff2d55", strokeColor: "#ff2d55", fillOpacity: 0.3 }} />
+              ) : null)}
+          </GoogleMap>
+        </div>
 
-          {pendingShape &&
-            (pendingShape.layerType === "polyline" ? (
-              <Polyline positions={pendingShape.latlngs} color="#ff2d55" weight={5} dashArray="6 6" />
-            ) : (
-              <Polygon positions={pendingShape.latlngs} color="#ff2d55" dashArray="6 6" />
-            ))}
-        </MapContainer>
+        <div className="map-side-panel">
+          {!drawMode && !finishedShape && !showFloorPicker && (
+            <>
+              <h3>Add to map</h3>
+              <button onClick={() => startDrawing("wall")}>+ Wall</button>
+              <button onClick={() => startDrawing("roof")}>+ Roof</button>
+              <button onClick={() => setShowFloorPicker(true)}>+ Floor</button>
+            </>
+          )}
+
+          {showFloorPicker && !drawMode && !finishedShape && (
+            <>
+              <h3>Add a floor</h3>
+              <p className="muted">A floor is normally the same footprint as the roof above it.</p>
+              <label>
+                Copy area &amp; outline from roof
+                <select value={floorSourceRoofId} onChange={(e) => setFloorSourceRoofId(e.target.value)}>
+                  <option value="">-</option>
+                  {room.roofs.map((r) => (
+                    <option key={r.id} value={r.id}>
+                      {r.location || `Roof ${r.id}`} ({r.area?.toFixed(1)} m2)
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <button onClick={copyFloorFromRoof} disabled={!floorSourceRoofId}>
+                Copy from roof
+              </button>
+              <button onClick={() => startDrawing("floor")}>Or draw floor manually</button>
+              <button className="danger" onClick={() => setShowFloorPicker(false)}>
+                Cancel
+              </button>
+            </>
+          )}
+
+          {drawMode && (
+            <>
+              <h3>Drawing {drawMode === "wall" ? "a wall" : drawMode === "roof" ? "a roof" : "a floor"}</h3>
+              <p className="muted">
+                Click points along the {drawMode === "wall" ? "wall" : "outline"} on the map.
+                {drawMode !== "wall" && " Need at least 3 points."}
+              </p>
+              <p>{drawPoints.length} point(s) placed.</p>
+              <div className="map-attribute-actions">
+                <button onClick={finishDrawing} disabled={drawMode === "wall" ? drawPoints.length < 2 : drawPoints.length < 3}>
+                  Finish
+                </button>
+                <button className="danger" onClick={cancelDrawing}>
+                  Cancel
+                </button>
+              </div>
+            </>
+          )}
+
+          {finishedShape && (
+            <AttributeForm shape={finishedShape} ageBands={ageBands} onAccept={handleAccept} onCancel={handleDiscard} />
+          )}
+        </div>
       </div>
-
-      <p className="muted">
-        Use the draw tools (top-left of the map) to trace a wall (line) or a roof/floor outline (polygon). Once
-        you finish a shape, a form appears below to confirm what it is and fill in the rest of its attributes.
-      </p>
-
-      {pendingShape && (
-        <AttributeForm shape={pendingShape} ageBands={ageBands} onAccept={handleAccept} onCancel={() => setPendingShape(null)} />
-      )}
     </div>
   );
 }
 
 function AttributeForm({ shape, ageBands, onAccept, onCancel }) {
-  const isLine = shape.layerType === "polyline";
-  const [elementType, setElementType] = useState(isLine ? "wall" : "roof");
+  const isWall = shape.type === "wall";
+  const isRoof = shape.type === "roof";
+  const isFloor = shape.type === "floor";
   const [fields, setFields] = useState({
-    location: "",
+    location: shape.copiedLocation || "",
     reference: "",
     age_band_id: "",
     height: 0,
@@ -265,25 +315,26 @@ function AttributeForm({ shape, ageBands, onAccept, onCancel }) {
     setFields((prev) => {
       const next = { ...prev, age_band_id: id || null };
       if (!band) return next;
-      if (elementType === "wall") {
+      if (isWall) {
         if (band.wall_u != null) next.wall_u_value = band.wall_u;
         const windowU = prev.window_frame_type === "Metal" ? band.window_metal_u : band.window_other_u;
         if (windowU != null) next.window_u_value = windowU;
-      } else if (elementType === "roof" && band[prev.roof_type === "Flat" ? "flat_roof_u" : "pitched_roof_u"] != null) {
-        next.u_value = band[prev.roof_type === "Flat" ? "flat_roof_u" : "pitched_roof_u"];
-      } else if (elementType === "floor" && band.floor_u != null) {
+      } else if (isRoof) {
+        const u = band[prev.roof_type === "Flat" ? "flat_roof_u" : "pitched_roof_u"];
+        if (u != null) next.u_value = u;
+      } else if (isFloor && band.floor_u != null) {
         next.u_value = band.floor_u;
       }
       return next;
     });
   };
 
-  const measurementLabel = isLine ? `${shape.measurement.toFixed(2)} m (length)` : `${shape.measurement.toFixed(2)} m² (area)`;
+  const measurementLabel = isWall ? `${shape.measurement.toFixed(2)} m (length)` : `${shape.measurement.toFixed(2)} m² (area)`;
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (elementType === "wall") {
-      onAccept("wall", {
+    if (isWall) {
+      onAccept({
         location: fields.location,
         reference: fields.reference,
         age_band_id: fields.age_band_id || null,
@@ -294,8 +345,8 @@ function AttributeForm({ shape, ageBands, onAccept, onCancel }) {
         wall_u_value: parseFloat(fields.wall_u_value) || 0,
         window_u_value: parseFloat(fields.window_u_value) || 0,
       });
-    } else if (elementType === "roof") {
-      onAccept("roof", {
+    } else if (isRoof) {
+      onAccept({
         location: fields.location,
         reference: fields.reference,
         age_band_id: fields.age_band_id || null,
@@ -305,7 +356,7 @@ function AttributeForm({ shape, ageBands, onAccept, onCancel }) {
         u_value: parseFloat(fields.u_value) || 0,
       });
     } else {
-      onAccept("floor", {
+      onAccept({
         location: fields.location,
         reference: fields.reference,
         age_band_id: fields.age_band_id || null,
@@ -319,17 +370,7 @@ function AttributeForm({ shape, ageBands, onAccept, onCancel }) {
     <form className="map-attribute-panel" onSubmit={handleSubmit}>
       <h3>Measured: {measurementLabel}</h3>
 
-      {!isLine && (
-        <label>
-          This is a
-          <select value={elementType} onChange={(e) => setElementType(e.target.value)}>
-            <option value="roof">Roof</option>
-            <option value="floor">Floor</option>
-          </select>
-        </label>
-      )}
-
-      <div className="map-attribute-grid">
+      <div className="map-attribute-grid-vertical">
         <label>
           Location
           <input type="text" value={fields.location} onChange={set("location")} placeholder="e.g. West wing" />
@@ -350,7 +391,7 @@ function AttributeForm({ shape, ageBands, onAccept, onCancel }) {
           </select>
         </label>
 
-        {elementType === "wall" && (
+        {isWall ? (
           <>
             <label>
               Height (m)
@@ -376,9 +417,7 @@ function AttributeForm({ shape, ageBands, onAccept, onCancel }) {
               <input type="number" step="any" value={fields.window_u_value} onChange={set("window_u_value")} />
             </label>
           </>
-        )}
-
-        {elementType === "roof" && (
+        ) : isRoof ? (
           <>
             <label>
               Roof type
@@ -396,9 +435,7 @@ function AttributeForm({ shape, ageBands, onAccept, onCancel }) {
               <input type="number" step="any" value={fields.u_value} onChange={set("u_value")} />
             </label>
           </>
-        )}
-
-        {elementType === "floor" && (
+        ) : (
           <label>
             U value
             <input type="number" step="any" value={fields.u_value} onChange={set("u_value")} />
