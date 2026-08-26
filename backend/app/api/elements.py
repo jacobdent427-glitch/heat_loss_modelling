@@ -1,0 +1,87 @@
+from flask import jsonify, request
+
+from ..extensions import db
+from ..models import PlantRoom, WallElement, RoofElement, RoofLightElement, FloorElement, DoorElement, Zone
+from . import api_bp
+
+ELEMENT_TYPES = {
+    "walls": (WallElement, [
+        "location", "construction", "reference", "height", "width", "window_pct",
+        "wall_u_value", "window_u_value", "proposed_wall_u_value", "proposed_window_u_value",
+        "wall_measure_id", "window_measure_id", "notes",
+    ]),
+    "roofs": (RoofElement, [
+        "location", "construction", "reference", "roof_type", "has_loft", "area", "u_value",
+        "proposed_u_value", "measure_id", "notes",
+    ]),
+    "rooflights": (RoofLightElement, [
+        "location", "construction", "reference", "height", "width", "qty", "u_value",
+        "proposed_u_value", "measure_id", "notes",
+    ]),
+    "floors": (FloorElement, [
+        "location", "construction", "reference", "area", "u_value", "proposed_u_value",
+        "measure_id", "notes",
+    ]),
+    "doors": (DoorElement, [
+        "location", "construction", "reference", "door_type", "height", "width", "qty", "u_value",
+        "proposed_u_value", "measure_id", "notes",
+    ]),
+    "zones": (Zone, ["name", "area_m2", "height_m"]),
+}
+
+
+def _model_and_fields(element_type):
+    if element_type not in ELEMENT_TYPES:
+        return None, None
+    return ELEMENT_TYPES[element_type]
+
+
+@api_bp.get("/plant-rooms/<int:room_id>/<element_type>")
+def list_elements(room_id, element_type):
+    model, _ = _model_and_fields(element_type)
+    if model is None:
+        return jsonify({"error": f"Unknown element type '{element_type}'"}), 404
+    db.get_or_404(PlantRoom, room_id)
+    rows = model.query.filter_by(plant_room_id=room_id).order_by(model.id).all()
+    return jsonify([r.to_dict() for r in rows])
+
+
+@api_bp.post("/plant-rooms/<int:room_id>/<element_type>")
+def create_element(room_id, element_type):
+    model, fields = _model_and_fields(element_type)
+    if model is None:
+        return jsonify({"error": f"Unknown element type '{element_type}'"}), 404
+    db.get_or_404(PlantRoom, room_id)
+    data = request.get_json(force=True) or {}
+    row = model(plant_room_id=room_id)
+    for field in fields:
+        if field in data:
+            setattr(row, field, data[field])
+    db.session.add(row)
+    db.session.commit()
+    return jsonify(row.to_dict()), 201
+
+
+@api_bp.put("/<element_type>/<int:element_id>")
+def update_element(element_type, element_id):
+    model, fields = _model_and_fields(element_type)
+    if model is None:
+        return jsonify({"error": f"Unknown element type '{element_type}'"}), 404
+    row = db.get_or_404(model, element_id)
+    data = request.get_json(force=True) or {}
+    for field in fields:
+        if field in data:
+            setattr(row, field, data[field])
+    db.session.commit()
+    return jsonify(row.to_dict())
+
+
+@api_bp.delete("/<element_type>/<int:element_id>")
+def delete_element(element_type, element_id):
+    model, _ = _model_and_fields(element_type)
+    if model is None:
+        return jsonify({"error": f"Unknown element type '{element_type}'"}), 404
+    row = db.get_or_404(model, element_id)
+    db.session.delete(row)
+    db.session.commit()
+    return "", 204
