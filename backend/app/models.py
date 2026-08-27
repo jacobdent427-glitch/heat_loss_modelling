@@ -273,6 +273,7 @@ class RoofElement(db.Model):
     roof_type = db.Column(db.String(20), default="Pitched")  # Pitched | Flat
     has_loft = db.Column(db.Boolean, default=False)
     area = db.Column(db.Float, default=0.0)
+    perimeter = db.Column(db.Float)
     age_band_id = db.Column(db.Integer, db.ForeignKey("age_band_u_value.id"))
     u_value = db.Column(db.Float, default=0.0)
 
@@ -294,6 +295,7 @@ class RoofElement(db.Model):
             "has_loft": self.has_loft,
             "geometry": self.geometry,
             "area": self.area,
+            "perimeter": self.perimeter,
             "age_band_id": self.age_band_id,
             "u_value": self.u_value,
             "proposed_u_value": self.proposed_u_value,
@@ -347,6 +349,9 @@ class FloorElement(db.Model):
     construction = db.Column(db.String(200))
     reference = db.Column(db.String(200))
     area = db.Column(db.Float, default=0.0)
+    perimeter = db.Column(db.Float)
+    thickness_m = db.Column(db.Float, default=0.1)
+    k_value = db.Column(db.Float, default=1.63)
     age_band_id = db.Column(db.Integer, db.ForeignKey("age_band_u_value.id"))
     u_value = db.Column(db.Float, default=0.0)
 
@@ -365,6 +370,9 @@ class FloorElement(db.Model):
             "construction": self.construction,
             "reference": self.reference,
             "area": self.area,
+            "perimeter": self.perimeter,
+            "thickness_m": self.thickness_m,
+            "k_value": self.k_value,
             "age_band_id": self.age_band_id,
             "u_value": self.u_value,
             "proposed_u_value": self.proposed_u_value,

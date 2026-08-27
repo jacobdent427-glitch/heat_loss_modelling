@@ -125,7 +125,9 @@ export default function PlantRoomPage() {
     const existingNames = new Set(room.floors.map((f) => (f.location || "").trim().toLowerCase()).filter(Boolean));
     const toCreate = room.roofs.filter((r) => r.location && !existingNames.has(r.location.trim().toLowerCase()));
     for (const r of toCreate) {
-      await api.createElement(roomId, "floors", { location: r.location, area: r.area || 0 });
+      const fields = { location: r.location, area: r.area || 0 };
+      if (r.perimeter) fields.perimeter = r.perimeter;
+      await api.createElement(roomId, "floors", fields);
     }
     refreshAll();
   };
@@ -226,11 +228,12 @@ export default function PlantRoomPage() {
                   type: "readonly",
                   format: (v, row) => fmt((row.area || 0) - roofLightAreaByRoof(room.rooflights, row.id)),
                 },
+                { key: "perimeter", label: "Perimeter (m)", type: "number" },
                 { key: "u_value", label: "U value", type: "number" },
                 { key: "notes", label: "Notes", type: "text" },
               ]}
               rows={room.roofs}
-              newRowDefaults={{ location: "", reference: "", roof_type: "Pitched", has_loft: false, area: 0, u_value: 0 }}
+              newRowDefaults={{ location: "", reference: "", roof_type: "Pitched", has_loft: false, area: 0, perimeter: null, u_value: 0 }}
               {...elementApi("roofs")}
             />
           </div>
@@ -259,15 +262,17 @@ export default function PlantRoomPage() {
       {tab === "Floors" && (
         <div className="tab-panel">
           <p className="muted">
-            Floor insulation is generally not recommended (expensive, disruptive, poor cost-effectiveness) - use the
-            U-Value Floor Calculator on the Reference Data page for the existing U-value, or pick an age band for a
-            rough default.
+            Floor insulation is generally not recommended (expensive, disruptive, poor cost-effectiveness). U value
+            is calculated automatically from the area, perimeter, thickness and k-value below (same method as the
+            U-Value Floor Calculator on the Reference Data page) - fill those in, or pick an age band instead for a
+            rough default, or just type a U value directly if you already know it.
           </p>
           <div className="auto-propose-bar">
             <button onClick={syncFloorsFromRoofs}>Copy areas from roofs</button>
             <span className="muted">
-              Adds a floor row for any roof whose location doesn't already have one, using that roof's area (a
-              building's floor and roof footprints are normally the same). Never overwrites an existing floor row.
+              Adds a floor row for any roof whose location doesn't already have one, using that roof's area and
+              perimeter (a building's floor and roof footprints are normally the same). Never overwrites an existing
+              floor row.
             </span>
           </div>
           <div className="table-scroll">
@@ -277,11 +282,14 @@ export default function PlantRoomPage() {
                 { key: "age_band_id", label: "Age band", type: "select", options: ageBandOptions, onSelect: (v, row) => ageBandDerivers.floor(row) },
                 { key: "reference", label: "Reference", type: "text" },
                 { key: "area", label: "Area (m2)", type: "number" },
+                { key: "perimeter", label: "Perimeter (m)", type: "number" },
+                { key: "thickness_m", label: "Thickness (m)", type: "number" },
+                { key: "k_value", label: "K-value (W/mK)", type: "number" },
                 { key: "u_value", label: "U value", type: "number" },
                 { key: "notes", label: "Notes", type: "text" },
               ]}
               rows={room.floors}
-              newRowDefaults={{ location: "", reference: "", area: 0, u_value: 0 }}
+              newRowDefaults={{ location: "", reference: "", area: 0, perimeter: null, thickness_m: 0.1, k_value: 1.63, u_value: 0 }}
               {...elementApi("floors")}
             />
           </div>

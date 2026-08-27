@@ -42,6 +42,11 @@ function polygonAreaSqMetres(points) {
   return window.google.maps.geometry.spherical.computeArea(points.map((p) => new window.google.maps.LatLng(p)));
 }
 
+function polygonPerimeterMetres(points) {
+  if (points.length < 3) return 0;
+  return polylineLengthMetres([...points, points[0]]);
+}
+
 function pointToSegmentDistSq(p, a, b) {
   const dx = b.lng - a.lng;
   const dy = b.lat - a.lat;
@@ -95,6 +100,7 @@ export default function SiteMap({ project, room, ageBands, elementApi, refreshAl
   const isWall = shapeKind === "wall";
   const minPoints = isWall ? 2 : 3;
   const measurement = isWall ? polylineLengthMetres(points) : polygonAreaSqMetres(points);
+  const perimeter = isWall ? null : polygonPerimeterMetres(points);
 
   const phaseRef = useRef(phase);
   phaseRef.current = phase;
@@ -375,7 +381,7 @@ export default function SiteMap({ project, room, ageBands, elementApi, refreshAl
           )}
           {phase === "reviewing" && (
             <AttributeForm
-              shape={{ type: shapeKind, measurement, copiedLocation }}
+              shape={{ type: shapeKind, measurement, perimeter, copiedLocation }}
               ageBands={ageBands}
               onAccept={handleAccept}
               onCancel={handleDiscard}
@@ -403,6 +409,8 @@ function AttributeForm({ shape, ageBands, onAccept, onCancel }) {
     roof_type: "Pitched",
     has_loft: false,
     u_value: 0,
+    thickness_m: 0.1,
+    k_value: 1.63,
   });
 
   const ageBandOptions = ageBands.map((a) => ({ value: a.id, label: a.period_label }));
@@ -426,9 +434,8 @@ function AttributeForm({ shape, ageBands, onAccept, onCancel }) {
       } else if (isRoof) {
         const u = band[prev.roof_type === "Flat" ? "flat_roof_u" : "pitched_roof_u"];
         if (u != null) next.u_value = u;
-      } else if (isFloor && band.floor_u != null) {
-        next.u_value = band.floor_u;
       }
+      // floor U-value is calculated from area, perimeter, thickness and k-value instead of an age band
       return next;
     });
   };
@@ -457,6 +464,7 @@ function AttributeForm({ shape, ageBands, onAccept, onCancel }) {
         roof_type: fields.roof_type,
         has_loft: fields.has_loft,
         area: shape.measurement,
+        perimeter: shape.perimeter,
         u_value: parseFloat(fields.u_value) || 0,
       });
     } else {
@@ -465,7 +473,9 @@ function AttributeForm({ shape, ageBands, onAccept, onCancel }) {
         reference: fields.reference,
         age_band_id: fields.age_band_id || null,
         area: shape.measurement,
-        u_value: parseFloat(fields.u_value) || 0,
+        perimeter: shape.perimeter,
+        thickness_m: parseFloat(fields.thickness_m) || 0.1,
+        k_value: parseFloat(fields.k_value) || 1.63,
       });
     }
   };
@@ -538,12 +548,23 @@ function AttributeForm({ shape, ageBands, onAccept, onCancel }) {
               U value
               <input type="number" step="any" value={fields.u_value} onChange={set("u_value")} />
             </label>
+            <p className="muted">Perimeter measured from the map: {shape.perimeter.toFixed(2)} m</p>
           </>
         ) : (
-          <label>
-            U value
-            <input type="number" step="any" value={fields.u_value} onChange={set("u_value")} />
-          </label>
+          <>
+            <label>
+              Floor thickness (m)
+              <input type="number" step="any" value={fields.thickness_m} onChange={set("thickness_m")} />
+            </label>
+            <label>
+              Floor k-value (W/mK)
+              <input type="number" step="any" value={fields.k_value} onChange={set("k_value")} />
+            </label>
+            <p className="muted">
+              Perimeter measured from the map: {shape.perimeter.toFixed(2)} m. U-value will be calculated
+              automatically from the area, perimeter, thickness and k-value.
+            </p>
+          </>
         )}
       </div>
 
