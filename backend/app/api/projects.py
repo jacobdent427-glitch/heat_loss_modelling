@@ -2,7 +2,10 @@ from flask import jsonify, request
 
 from ..extensions import db
 from ..models import Project
+from ..validation import validate, error_response
 from . import api_bp
+
+PROJECT_VALIDATION = dict(range_if_set=[("latitude", -90, 90), ("longitude", -180, 180)])
 
 
 @api_bp.get("/projects")
@@ -32,6 +35,9 @@ def get_project(project_id):
 def update_project(project_id):
     project = db.get_or_404(Project, project_id)
     data = request.get_json(force=True) or {}
+    errors = validate(data, **PROJECT_VALIDATION)
+    if errors:
+        return error_response(errors)
     for field in ("name", "address", "notes", "latitude", "longitude"):
         if field in data:
             setattr(project, field, data[field])

@@ -3,6 +3,7 @@ from flask import jsonify, request
 from ..extensions import db
 from ..models import PlantRoom, Project, ImprovementMeasure
 from ..results import plant_room_results, auto_propose_plant_room
+from ..validation import validate, error_response
 from . import api_bp
 
 PLANT_ROOM_FIELDS = [
@@ -12,6 +13,15 @@ PLANT_ROOM_FIELDS = [
     "dhw_tank_cycles_per_day", "dhw_efficiency", "ach", "internal_setpoint_c",
     "external_design_temp_c", "notes",
 ]
+
+PLANT_ROOM_VALIDATION = dict(
+    non_negative_if_set=[
+        "annual_fuel_usage_kwh", "unit_rate_per_kwh", "standing_charge_per_day", "dhw_manual_kwh",
+        "dhw_summer_baseload_kwh_month", "dhw_tank_volume_litres", "dhw_tank_temp_rise_c",
+        "dhw_tank_cycles_per_day", "ach",
+    ],
+    fraction_if_set=["boiler_efficiency", "kitchen_gas_pct", "dhw_efficiency"],
+)
 
 
 @api_bp.get("/projects/<int:project_id>/plant-rooms")
@@ -27,6 +37,9 @@ def create_plant_room(project_id):
     data = request.get_json(force=True) or {}
     if not data.get("name"):
         return jsonify({"error": "name is required"}), 400
+    errors = validate(data, **PLANT_ROOM_VALIDATION)
+    if errors:
+        return error_response(errors)
     room = PlantRoom(project_id=project_id)
     for field in PLANT_ROOM_FIELDS:
         if field in data:
@@ -53,6 +66,9 @@ def get_plant_room(room_id):
 def update_plant_room(room_id):
     room = db.get_or_404(PlantRoom, room_id)
     data = request.get_json(force=True) or {}
+    errors = validate(data, **PLANT_ROOM_VALIDATION)
+    if errors:
+        return error_response(errors)
     for field in PLANT_ROOM_FIELDS:
         if field in data:
             setattr(room, field, data[field])

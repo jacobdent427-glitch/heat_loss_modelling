@@ -2,6 +2,7 @@ from flask import jsonify, request
 
 from ..extensions import db
 from ..models import PlantRoom, WallElement, RoofElement, RoofLightElement, FloorElement, DoorElement, Zone
+from ..validation import validate, error_response
 from . import api_bp
 
 ELEMENT_TYPES = {
@@ -29,6 +30,36 @@ ELEMENT_TYPES = {
     "zones": (Zone, ["name", "area_m2", "height_m"]),
 }
 
+# height/width/area/qty/u_value are real measurements - a row can be created without them
+# (e.g. "copy from roof" leaves them blank on purpose) but if you send a value it can't be
+# zero or negative, and once set it can't be blanked back out to zero either.
+VALIDATION_RULES = {
+    "walls": dict(
+        strict_positive=["height", "width", "wall_u_value", "window_u_value"],
+        positive_if_set=["proposed_wall_u_value", "proposed_window_u_value"],
+        fraction_if_set=["window_pct"],
+    ),
+    "roofs": dict(
+        strict_positive=["area", "u_value"],
+        positive_if_set=["proposed_u_value"],
+    ),
+    "rooflights": dict(
+        strict_positive=["height", "width", "qty", "u_value"],
+        positive_if_set=["proposed_u_value"],
+    ),
+    "floors": dict(
+        strict_positive=["area", "u_value"],
+        positive_if_set=["proposed_u_value"],
+    ),
+    "doors": dict(
+        strict_positive=["height", "width", "qty", "u_value"],
+        positive_if_set=["proposed_u_value"],
+    ),
+    "zones": dict(
+        strict_positive=["area_m2", "height_m"],
+    ),
+}
+
 
 def _model_and_fields(element_type):
     if element_type not in ELEMENT_TYPES:
@@ -53,6 +84,11 @@ def create_element(room_id, element_type):
         return jsonify({"error": f"Unknown element type '{element_type}'"}), 404
     db.get_or_404(PlantRoom, room_id)
     data = request.get_json(force=True) or {}
+
+    errors = validate(data, **VALIDATION_RULES.get(element_type, {}))
+    if errors:
+        return error_response(errors)
+
     row = model(plant_room_id=room_id)
     for field in fields:
         if field in data:
@@ -69,6 +105,11 @@ def update_element(element_type, element_id):
         return jsonify({"error": f"Unknown element type '{element_type}'"}), 404
     row = db.get_or_404(model, element_id)
     data = request.get_json(force=True) or {}
+
+    errors = validate(data, **VALIDATION_RULES.get(element_type, {}))
+    if errors:
+        return error_response(errors)
+
     for field in fields:
         if field in data:
             setattr(row, field, data[field])

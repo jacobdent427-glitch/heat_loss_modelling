@@ -81,8 +81,8 @@ def interpolate_floor_u_value(p_a_ratio: float, resistance: float, reference_poi
             return None
         if len(pts) == 1:
             return pts[0]["u_value"]
-        p_lo = max([p for p in pts if p["p_a_ratio"] <= p_a_ratio], default=pts[0])
-        p_hi = min([p for p in pts if p["p_a_ratio"] >= p_a_ratio], default=pts[-1])
+        p_lo = max([p for p in pts if p["p_a_ratio"] <= p_a_ratio], key=lambda p: p["p_a_ratio"], default=pts[0])
+        p_hi = min([p for p in pts if p["p_a_ratio"] >= p_a_ratio], key=lambda p: p["p_a_ratio"], default=pts[-1])
         return _linear_interp(p_a_ratio, p_lo["p_a_ratio"], p_hi["p_a_ratio"], p_lo["u_value"], p_hi["u_value"])
 
     val_lo = col_value(r_lo)

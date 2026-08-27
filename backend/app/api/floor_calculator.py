@@ -3,6 +3,7 @@ from flask import jsonify, request
 from .. import calculations as calc
 from ..extensions import db
 from ..models import FloorUValueReferencePoint
+from ..validation import validate, error_response
 from . import api_bp
 
 
@@ -20,6 +21,13 @@ def create_reference_point():
     for field in ("p_a_ratio", "resistance", "u_value"):
         if field not in data:
             return jsonify({"error": f"{field} is required"}), 400
+    errors = validate(
+        data,
+        positive_if_set=["u_value"],
+        non_negative_if_set=["p_a_ratio", "resistance"],
+    )
+    if errors:
+        return error_response(errors)
     row = FloorUValueReferencePoint(
         p_a_ratio=data["p_a_ratio"], resistance=data["resistance"], u_value=data["u_value"]
     )
@@ -43,6 +51,10 @@ def calculate_floor_u_value():
     missing = [f for f in required if f not in data]
     if missing:
         return jsonify({"error": f"Missing fields: {', '.join(missing)}"}), 400
+
+    errors = validate(data, strict_positive=required)
+    if errors:
+        return error_response(errors)
 
     resistance = calc.floor_thermal_resistance(data["thickness_m"], data["k_value"])
     p_a_ratio = calc.floor_perimeter_area_ratio(data["perimeter_m"], data["area_m2"])

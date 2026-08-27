@@ -98,7 +98,12 @@ export default function PlantRoomPage() {
 
   const elementApi = (type) => ({
     onUpdate: async (id, fields) => {
-      await api.updateElement(type, id, fields);
+      try {
+        await api.updateElement(type, id, fields);
+        setError(null);
+      } catch (e) {
+        setError(e.message);
+      }
       refreshAll();
     },
     onDelete: async (id) => {
@@ -106,7 +111,12 @@ export default function PlantRoomPage() {
       refreshAll();
     },
     onAdd: async (fields) => {
-      await api.createElement(roomId, type, fields);
+      try {
+        await api.createElement(roomId, type, fields);
+        setError(null);
+      } catch (e) {
+        setError(e.message);
+      }
       refreshAll();
     },
   });
@@ -115,7 +125,7 @@ export default function PlantRoomPage() {
     const existingNames = new Set(room.floors.map((f) => (f.location || "").trim().toLowerCase()).filter(Boolean));
     const toCreate = room.roofs.filter((r) => r.location && !existingNames.has(r.location.trim().toLowerCase()));
     for (const r of toCreate) {
-      await api.createElement(roomId, "floors", { location: r.location, area: r.area || 0, u_value: 0 });
+      await api.createElement(roomId, "floors", { location: r.location, area: r.area || 0 });
     }
     refreshAll();
   };
@@ -124,7 +134,7 @@ export default function PlantRoomPage() {
     const existingNames = new Set(room.zones.map((z) => (z.name || "").trim().toLowerCase()).filter(Boolean));
     const toCreate = room.floors.filter((f) => f.location && !existingNames.has(f.location.trim().toLowerCase()));
     for (const f of toCreate) {
-      await api.createElement(roomId, "zones", { name: f.location, area_m2: f.area || 0, height_m: 0 });
+      await api.createElement(roomId, "zones", { name: f.location, area_m2: f.area || 0 });
     }
     refreshAll();
   };

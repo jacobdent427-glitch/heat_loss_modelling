@@ -2,12 +2,32 @@ from flask import jsonify, request
 
 from ..extensions import db
 from ..models import ImprovementMeasure, EmissionFactor, AgeBandUValue
+from ..validation import validate, error_response
 from . import api_bp
 
 MEASURE_FIELDS = [
     "name", "applies_to", "lifetime_years", "cost_per_m2", "cost_guidance",
     "typical_u_value", "u_value_guidance", "is_custom",
 ]
+
+MEASURE_VALIDATION = dict(non_negative_if_set=["lifetime_years", "cost_per_m2", "typical_u_value"])
+
+EMISSION_FACTOR_FIELDS = ("unit_rate_per_kwh", "standing_charge_per_day", "scope_1_2_kg_per_kwh", "scope_3_kg_per_kwh", "source")
+EMISSION_FACTOR_VALIDATION = dict(
+    non_negative_if_set=["unit_rate_per_kwh", "standing_charge_per_day", "scope_1_2_kg_per_kwh", "scope_3_kg_per_kwh"]
+)
+
+AGE_BAND_FIELDS = (
+    "period_label", "sort_order", "wall_u", "floor_u", "pitched_roof_u", "flat_roof_u",
+    "window_metal_u", "window_other_u", "window_area_pct_note", "pedestrian_door_u",
+    "vehicle_door_u", "entrance_door_u", "air_permeability",
+)
+AGE_BAND_VALIDATION = dict(
+    non_negative_if_set=[
+        "wall_u", "floor_u", "pitched_roof_u", "flat_roof_u", "window_metal_u", "window_other_u",
+        "pedestrian_door_u", "vehicle_door_u", "entrance_door_u", "air_permeability",
+    ]
+)
 
 
 def _set_applies_to(row, data):
@@ -27,6 +47,9 @@ def create_measure():
     data = request.get_json(force=True) or {}
     if not data.get("name"):
         return jsonify({"error": "name is required"}), 400
+    errors = validate(data, **MEASURE_VALIDATION)
+    if errors:
+        return error_response(errors)
     row = ImprovementMeasure(name=data["name"], is_custom=True)
     for field in MEASURE_FIELDS:
         if field in data and field not in ("name", "applies_to"):
@@ -41,6 +64,9 @@ def create_measure():
 def update_measure(measure_id):
     row = db.get_or_404(ImprovementMeasure, measure_id)
     data = request.get_json(force=True) or {}
+    errors = validate(data, **MEASURE_VALIDATION)
+    if errors:
+        return error_response(errors)
     for field in MEASURE_FIELDS:
         if field in data and field != "applies_to":
             setattr(row, field, data[field])
@@ -67,7 +93,10 @@ def list_emission_factors():
 def update_emission_factor(factor_id):
     row = db.get_or_404(EmissionFactor, factor_id)
     data = request.get_json(force=True) or {}
-    for field in ("unit_rate_per_kwh", "standing_charge_per_day", "scope_1_2_kg_per_kwh", "scope_3_kg_per_kwh", "source"):
+    errors = validate(data, **EMISSION_FACTOR_VALIDATION)
+    if errors:
+        return error_response(errors)
+    for field in EMISSION_FACTOR_FIELDS:
         if field in data:
             setattr(row, field, data[field])
     db.session.commit()
@@ -85,12 +114,11 @@ def create_age_band_u_value():
     data = request.get_json(force=True) or {}
     if not data.get("period_label"):
         return jsonify({"error": "period_label is required"}), 400
+    errors = validate(data, **AGE_BAND_VALIDATION)
+    if errors:
+        return error_response(errors)
     row = AgeBandUValue(period_label=data["period_label"])
-    for field in (
-        "sort_order", "wall_u", "floor_u", "pitched_roof_u", "flat_roof_u", "window_metal_u",
-        "window_other_u", "window_area_pct_note", "pedestrian_door_u", "vehicle_door_u",
-        "entrance_door_u", "air_permeability",
-    ):
+    for field in AGE_BAND_FIELDS:
         if field in data:
             setattr(row, field, data[field])
     db.session.add(row)
@@ -102,11 +130,10 @@ def create_age_band_u_value():
 def update_age_band_u_value(row_id):
     row = db.get_or_404(AgeBandUValue, row_id)
     data = request.get_json(force=True) or {}
-    for field in (
-        "period_label", "sort_order", "wall_u", "floor_u", "pitched_roof_u", "flat_roof_u",
-        "window_metal_u", "window_other_u", "window_area_pct_note", "pedestrian_door_u",
-        "vehicle_door_u", "entrance_door_u", "air_permeability",
-    ):
+    errors = validate(data, **AGE_BAND_VALIDATION)
+    if errors:
+        return error_response(errors)
+    for field in AGE_BAND_FIELDS:
         if field in data:
             setattr(row, field, data[field])
     db.session.commit()

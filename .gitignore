@@ -3,6 +3,8 @@ backend/venv/
 backend/instance/
 __pycache__/
 *.pyc
+.coverage
+.pytest_cache/
 
 # Node
 frontend/node_modules/
