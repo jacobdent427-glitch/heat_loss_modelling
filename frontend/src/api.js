@@ -7,11 +7,15 @@ async function request(path, options = {}) {
   });
   if (!res.ok) {
     let msg = res.statusText;
+    let fieldErrors = null;
     try {
       const data = await res.json();
       msg = data.error || msg;
+      fieldErrors = data.errors || null;
     } catch {}
-    throw new Error(msg);
+    const err = new Error(msg);
+    err.fieldErrors = fieldErrors;
+    throw err;
   }
   if (res.status === 204) return null;
   return res.json();

@@ -96,6 +96,7 @@ export default function SiteMap({ project, room, ageBands, elementApi, refreshAl
   const [copiedLocation, setCopiedLocation] = useState("");
   const [showFloorPicker, setShowFloorPicker] = useState(false);
   const [floorSourceRoofId, setFloorSourceRoofId] = useState("");
+  const [acceptError, setAcceptError] = useState(null);
 
   const isWall = shapeKind === "wall";
   const minPoints = isWall ? 2 : 3;
@@ -148,6 +149,7 @@ export default function SiteMap({ project, room, ageBands, elementApi, refreshAl
     setPoints([]);
     setCopiedLocation("");
     setFloorSourceRoofId("");
+    setAcceptError(null);
   };
 
   const handleMapBackgroundClick = (e) => {
@@ -193,9 +195,14 @@ export default function SiteMap({ project, room, ageBands, elementApi, refreshAl
   const handleAccept = async (fields) => {
     const geometry = points.length ? points.map((p) => [p.lat, p.lng]) : null;
     const type = shapeKind === "wall" ? "walls" : shapeKind === "roof" ? "roofs" : "floors";
-    await elementApi(type).onAdd({ ...fields, geometry });
-    cancelShape();
-    refreshAll();
+    try {
+      await elementApi(type).onAdd({ ...fields, geometry });
+      setAcceptError(null);
+      cancelShape();
+    } catch (e) {
+      // keep the drawing and the entered fields in place so nothing is lost - just show what's wrong
+      setAcceptError(e);
+    }
   };
 
   const handleDiscard = () => {
@@ -385,6 +392,7 @@ export default function SiteMap({ project, room, ageBands, elementApi, refreshAl
               ageBands={ageBands}
               onAccept={handleAccept}
               onCancel={handleDiscard}
+              error={acceptError}
             />
           )}
         </div>
@@ -393,10 +401,13 @@ export default function SiteMap({ project, room, ageBands, elementApi, refreshAl
   );
 }
 
-function AttributeForm({ shape, ageBands, onAccept, onCancel }) {
+function AttributeForm({ shape, ageBands, onAccept, onCancel, error }) {
   const isWall = shape.type === "wall";
   const isRoof = shape.type === "roof";
   const isFloor = shape.type === "floor";
+  const fieldErrors = error?.fieldErrors || {};
+  const errorStyle = (key) =>
+    fieldErrors[key] ? { borderColor: "var(--danger)", borderWidth: "2px", background: "#fdf0ee" } : undefined;
   const [fields, setFields] = useState({
     location: shape.copiedLocation || "",
     reference: "",
@@ -511,11 +522,11 @@ function AttributeForm({ shape, ageBands, onAccept, onCancel }) {
           <>
             <label>
               Height (m)
-              <input type="number" step="any" value={fields.height} onChange={set("height")} />
+              <input type="number" step="any" value={fields.height} onChange={set("height")} style={errorStyle("height")} title={fieldErrors.height} />
             </label>
             <label>
               % windows (0-1)
-              <input type="number" step="any" value={fields.window_pct} onChange={set("window_pct")} />
+              <input type="number" step="any" value={fields.window_pct} onChange={set("window_pct")} style={errorStyle("window_pct")} title={fieldErrors.window_pct} />
             </label>
             <label>
               Window frame
@@ -526,11 +537,11 @@ function AttributeForm({ shape, ageBands, onAccept, onCancel }) {
             </label>
             <label>
               Wall U
-              <input type="number" step="any" value={fields.wall_u_value} onChange={set("wall_u_value")} />
+              <input type="number" step="any" value={fields.wall_u_value} onChange={set("wall_u_value")} style={errorStyle("wall_u_value")} title={fieldErrors.wall_u_value} />
             </label>
             <label>
               Window U
-              <input type="number" step="any" value={fields.window_u_value} onChange={set("window_u_value")} />
+              <input type="number" step="any" value={fields.window_u_value} onChange={set("window_u_value")} style={errorStyle("window_u_value")} title={fieldErrors.window_u_value} />
             </label>
           </>
         ) : isRoof ? (
@@ -548,7 +559,7 @@ function AttributeForm({ shape, ageBands, onAccept, onCancel }) {
             </label>
             <label>
               U value
-              <input type="number" step="any" value={fields.u_value} onChange={set("u_value")} />
+              <input type="number" step="any" value={fields.u_value} onChange={set("u_value")} style={errorStyle("u_value")} title={fieldErrors.u_value} />
             </label>
             <p className="muted">Perimeter measured from the map: {shape.perimeter.toFixed(2)} m</p>
           </>
@@ -564,11 +575,11 @@ function AttributeForm({ shape, ageBands, onAccept, onCancel }) {
             </label>
             <label>
               Floor thickness (m)
-              <input type="number" step="any" value={fields.thickness_m} onChange={set("thickness_m")} />
+              <input type="number" step="any" value={fields.thickness_m} onChange={set("thickness_m")} style={errorStyle("thickness_m")} title={fieldErrors.thickness_m} />
             </label>
             <label>
               Floor k-value (W/mK)
-              <input type="number" step="any" value={fields.k_value} onChange={set("k_value")} />
+              <input type="number" step="any" value={fields.k_value} onChange={set("k_value")} style={errorStyle("k_value")} title={fieldErrors.k_value} />
             </label>
             <p className="muted">
               Perimeter measured from the map: {shape.perimeter.toFixed(2)} m. U-value will be calculated
@@ -577,6 +588,8 @@ function AttributeForm({ shape, ageBands, onAccept, onCancel }) {
           </>
         )}
       </div>
+
+      {error && <p className="error">{error.message}</p>}
 
       <div className="map-attribute-actions">
         <button type="submit">Accept &amp; save</button>

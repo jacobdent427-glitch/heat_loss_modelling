@@ -32,6 +32,7 @@ export default function PlantRoomPage() {
   const [results, setResults] = useState(null);
   const [tab, setTab] = useState("Settings");
   const [error, setError] = useState(null);
+  const [elementErrors, setElementErrors] = useState({});
 
   const load = async () => {
     try {
@@ -105,12 +106,15 @@ export default function PlantRoomPage() {
   const elementApi = (type) => ({
     onUpdate: async (id, fields) => {
       try {
-        await api.updateElement(type, id, fields);
-        setError(null);
+        const result = await api.updateElement(type, id, fields);
+        setElementErrors((prev) => ({ ...prev, [type]: null }));
+        refreshAll();
+        return result;
       } catch (e) {
-        setError(e.message);
+        setElementErrors((prev) => ({ ...prev, [type]: e }));
+        refreshAll();
+        throw e;
       }
-      refreshAll();
     },
     onDelete: async (id) => {
       await api.deleteElement(type, id);
@@ -118,14 +122,20 @@ export default function PlantRoomPage() {
     },
     onAdd: async (fields) => {
       try {
-        await api.createElement(roomId, type, fields);
-        setError(null);
+        const result = await api.createElement(roomId, type, fields);
+        setElementErrors((prev) => ({ ...prev, [type]: null }));
+        refreshAll();
+        return result;
       } catch (e) {
-        setError(e.message);
+        setElementErrors((prev) => ({ ...prev, [type]: e }));
+        refreshAll();
+        throw e;
       }
-      refreshAll();
     },
   });
+
+  const ElementError = ({ type }) =>
+    elementErrors[type] ? <p className="error">{elementErrors[type].message}</p> : null;
 
   const syncFloorsFromRoofs = async () => {
     const existingNames = new Set(room.floors.map((f) => (f.location || "").trim().toLowerCase()).filter(Boolean));
@@ -200,9 +210,11 @@ export default function PlantRoomPage() {
               ]}
               rows={room.walls}
               newRowDefaults={{ location: "", reference: "", height: 0, width: 0, window_pct: 0, window_frame_type: "Other", wall_u_value: 0, window_u_value: 0 }}
+              addError={elementErrors.walls}
               {...elementApi("walls")}
             />
           </div>
+          <ElementError type="walls" />
         </div>
       )}
 
@@ -240,9 +252,11 @@ export default function PlantRoomPage() {
               ]}
               rows={room.roofs}
               newRowDefaults={{ location: "", reference: "", roof_type: "Pitched", has_loft: false, area: 0, perimeter: null, u_value: 0 }}
+              addError={elementErrors.roofs}
               {...elementApi("roofs")}
             />
           </div>
+          <ElementError type="roofs" />
 
           <h3>Roof lights</h3>
           <p className="muted">Link each rooflight to the roof it sits within so its area is subtracted correctly.</p>
@@ -259,9 +273,11 @@ export default function PlantRoomPage() {
               ]}
               rows={room.rooflights}
               newRowDefaults={{ location: "", height: 0, width: 0, qty: 1, u_value: 0 }}
+              addError={elementErrors.rooflights}
               {...elementApi("rooflights")}
             />
           </div>
+          <ElementError type="rooflights" />
         </div>
       )}
 
@@ -297,9 +313,11 @@ export default function PlantRoomPage() {
               ]}
               rows={room.floors}
               newRowDefaults={{ location: "", reference: "", area: 0, perimeter: null, ground_type: "sand_or_gravel", thickness_m: 0.1, k_value: 1.63, u_value: 0 }}
+              addError={elementErrors.floors}
               {...elementApi("floors")}
             />
           </div>
+          <ElementError type="floors" />
         </div>
       )}
 
@@ -326,9 +344,11 @@ export default function PlantRoomPage() {
               ]}
               rows={room.zones}
               newRowDefaults={{ name: "", area_m2: 0, height_m: 0 }}
+              addError={elementErrors.zones}
               {...elementApi("zones")}
             />
           </div>
+          <ElementError type="zones" />
           <p>
             <strong>Total volume:</strong> {fmt(room.zones.reduce((s, z) => s + (z.area_m2 || 0) * (z.height_m || 0), 0))} m3
           </p>

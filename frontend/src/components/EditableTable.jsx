@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-export default function EditableTable({ columns, rows, onUpdate, onDelete, onAdd, newRowDefaults, hideAddRow, hideDeleteColumn }) {
+export default function EditableTable({ columns, rows, onUpdate, onDelete, onAdd, newRowDefaults, hideAddRow, hideDeleteColumn, addError }) {
   const [localRows, setLocalRows] = useState(rows);
   const [newRow, setNewRow] = useState(newRowDefaults);
 
@@ -34,7 +34,9 @@ export default function EditableTable({ columns, rows, onUpdate, onDelete, onAdd
     },
   });
 
-  const renderInput = (value, col, handlers, immediateCommit, row) => {
+  const errorStyle = { borderColor: "var(--danger)", borderWidth: "2px", background: "#fdf0ee" };
+
+  const renderInput = (value, col, handlers, immediateCommit, row, hasError) => {
     if (col.type === "readonly") {
       return <span>{col.format ? col.format(value, row) : value}</span>;
     }
@@ -46,6 +48,7 @@ export default function EditableTable({ columns, rows, onUpdate, onDelete, onAdd
             const fields = handlers.onCommit(e.target.value === "" ? null : e.target.value);
             immediateCommit(fields);
           }}
+          style={hasError ? errorStyle : undefined}
         >
           <option value="">-</option>
           {col.options.map((o) => (
@@ -72,7 +75,8 @@ export default function EditableTable({ columns, rows, onUpdate, onDelete, onAdd
         value={value ?? ""}
         onChange={(e) => handlers.onLocalChange(e.target.value)}
         onBlur={(e) => immediateCommit(handlers.onCommit(e.target.value))}
-        style={col.width ? { width: col.width } : undefined}
+        style={{ ...(col.width ? { width: col.width } : undefined), ...(hasError ? errorStyle : undefined) }}
+        title={hasError || undefined}
       />
     );
   };
@@ -95,7 +99,9 @@ export default function EditableTable({ columns, rows, onUpdate, onDelete, onAdd
                 setLocalRows((prev) => prev.map((r) => (r.id === row.id ? updater(r) : r)));
               const handlers = makeHandlers(row, c, setRowState);
               return (
-                <td key={c.key}>{renderInput(row[c.key], c, handlers, (fields) => onUpdate(row.id, fields), row)}</td>
+                <td key={c.key}>
+                  {renderInput(row[c.key], c, handlers, (fields) => onUpdate(row.id, fields).catch(() => {}), row)}
+                </td>
               );
             })}
             {!hideDeleteColumn && (
@@ -120,13 +126,18 @@ export default function EditableTable({ columns, rows, onUpdate, onDelete, onAdd
           <tr>
             {columns.map((c) => {
               const handlers = makeHandlers(newRow, c, setNewRow);
-              return <td key={c.key}>{renderInput(newRow[c.key], c, handlers, () => {}, newRow)}</td>;
+              const fieldError = addError?.fieldErrors?.[c.key];
+              return <td key={c.key}>{renderInput(newRow[c.key], c, handlers, () => {}, newRow, fieldError)}</td>;
             })}
             <td>
               <button
-                onClick={() => {
-                  onAdd(newRow);
-                  setNewRow(newRowDefaults);
+                onClick={async () => {
+                  try {
+                    await onAdd(newRow);
+                    setNewRow(newRowDefaults);
+                  } catch {
+                    // keep what was typed so it isn't lost - the error is shown near this button
+                  }
                 }}
               >
                 Add
