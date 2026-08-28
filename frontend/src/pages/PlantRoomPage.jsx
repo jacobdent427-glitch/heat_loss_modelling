@@ -6,6 +6,12 @@ import SiteMap from "../components/SiteMap";
 
 const TABS = ["Settings", "Site Map", "Walls", "Roofs", "Floors", "Volume", "Building Fabric Improvements", "Results"];
 
+const GROUND_TYPE_OPTIONS = [
+  { value: "clay_soil", label: "Clay soil" },
+  { value: "sand_or_gravel", label: "Sand or gravel" },
+  { value: "homogeneous_rock", label: "Homogeneous rock" },
+];
+
 function fmt(n, dp = 2) {
   if (n === null || n === undefined || Number.isNaN(n)) return "-";
   return Number(n).toFixed(dp);
@@ -263,9 +269,9 @@ export default function PlantRoomPage() {
         <div className="tab-panel">
           <p className="muted">
             Floor insulation is generally not recommended (expensive, disruptive, poor cost-effectiveness). U value
-            is calculated automatically from the area, perimeter, thickness and k-value below (same method as the
-            U-Value Floor Calculator on the Reference Data page) - fill those in, or pick an age band instead for a
-            rough default, or just type a U value directly if you already know it.
+            is calculated automatically from the area, perimeter, ground type, thickness and k-value below (same
+            method as the U-Value Floor Calculator on the Reference Data page) - fill those in, or pick an age band
+            instead for a rough default, or just type a U value directly if you already know it.
           </p>
           <div className="auto-propose-bar">
             <button onClick={syncFloorsFromRoofs}>Copy areas from roofs</button>
@@ -283,13 +289,14 @@ export default function PlantRoomPage() {
                 { key: "reference", label: "Reference", type: "text" },
                 { key: "area", label: "Area (m2)", type: "number" },
                 { key: "perimeter", label: "Perimeter (m)", type: "number" },
+                { key: "ground_type", label: "Ground type", type: "select", options: GROUND_TYPE_OPTIONS },
                 { key: "thickness_m", label: "Thickness (m)", type: "number" },
                 { key: "k_value", label: "K-value (W/mK)", type: "number" },
                 { key: "u_value", label: "U value", type: "number" },
                 { key: "notes", label: "Notes", type: "text" },
               ]}
               rows={room.floors}
-              newRowDefaults={{ location: "", reference: "", area: 0, perimeter: null, thickness_m: 0.1, k_value: 1.63, u_value: 0 }}
+              newRowDefaults={{ location: "", reference: "", area: 0, perimeter: null, ground_type: "sand_or_gravel", thickness_m: 0.1, k_value: 1.63, u_value: 0 }}
               {...elementApi("floors")}
             />
           </div>

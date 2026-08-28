@@ -3,6 +3,11 @@ import { api } from "../api";
 import EditableTable from "../components/EditableTable";
 
 const APPLIES_TO_OPTIONS = ["wall", "window", "roof", "rooflight", "floor", "door"];
+const GROUND_TYPE_OPTIONS = [
+  { value: "clay_soil", label: "Clay soil" },
+  { value: "sand_or_gravel", label: "Sand or gravel" },
+  { value: "homogeneous_rock", label: "Homogeneous rock" },
+];
 
 export default function ReferenceDataPage() {
   const [measures, setMeasures] = useState([]);
@@ -168,15 +173,16 @@ function EmissionFactorRow({ factor, onSave }) {
 
 function FloorUValueCalculator() {
   const [points, setPoints] = useState([]);
-  const [form, setForm] = useState({ perimeter_m: "", area_m2: "", k_value: 1.63, thickness_m: 0.1 });
+  const [form, setForm] = useState({ perimeter_m: "", area_m2: "", ground_type: "sand_or_gravel", k_value: 1.63, thickness_m: 0.1 });
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
 
-  const loadPoints = () => api.listFloorReferencePoints().then(setPoints);
+  const loadPoints = (groundType) => api.listFloorReferencePoints(groundType).then(setPoints);
 
   useEffect(() => {
-    loadPoints();
-  }, []);
+    loadPoints(form.ground_type);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.ground_type]);
 
   const calculate = async (e) => {
     e.preventDefault();
@@ -185,6 +191,7 @@ function FloorUValueCalculator() {
       const res = await api.calculateFloorUValue({
         perimeter_m: parseFloat(form.perimeter_m),
         area_m2: parseFloat(form.area_m2),
+        ground_type: form.ground_type,
         k_value: parseFloat(form.k_value),
         thickness_m: parseFloat(form.thickness_m),
       });
@@ -199,9 +206,8 @@ function FloorUValueCalculator() {
     <>
       <h2>U-Value Floor Calculator</h2>
       <p className="muted">
-        Perimeter/area ratio method (BS EN ISO 13370 / BRE "Table C1"). The reference grid below only has the points
-        actually used in the source workbook - add more perimeter/area-ratio rows and thermal-resistance columns from
-        your BRE/CIBSE source table as needed; the interpolation works with however many points you give it.
+        Perimeter/area ratio method (BS EN ISO 13370 / BRE "Table C1"). Ground type changes which reference table is
+        used - clay soil, sand/gravel and homogeneous rock each have a different published U-value grid.
       </p>
       <form className="inline-form" onSubmit={calculate}>
         <label>
@@ -211,6 +217,16 @@ function FloorUValueCalculator() {
         <label>
           Area (m2)
           <input type="number" step="any" value={form.area_m2} onChange={(e) => setForm({ ...form, area_m2: e.target.value })} required />
+        </label>
+        <label>
+          Ground type
+          <select value={form.ground_type} onChange={(e) => setForm({ ...form, ground_type: e.target.value })}>
+            {GROUND_TYPE_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </select>
         </label>
         <label>
           Floor k-value (W/mK)
@@ -231,7 +247,7 @@ function FloorUValueCalculator() {
         </p>
       )}
 
-      <h3>Reference grid points</h3>
+      <h3>Reference grid points ({GROUND_TYPE_OPTIONS.find((o) => o.value === form.ground_type)?.label})</h3>
       <div className="table-scroll">
         <EditableTable
           columns={[
@@ -240,15 +256,15 @@ function FloorUValueCalculator() {
             { key: "u_value", label: "U value (W/m2K)", type: "number" },
           ]}
           rows={points}
-          newRowDefaults={{ p_a_ratio: 0, resistance: 0, u_value: 0 }}
+          newRowDefaults={{ p_a_ratio: 0, resistance: 0, u_value: 0, ground_type: form.ground_type }}
           onUpdate={() => {}}
           onDelete={async (id) => {
             await api.deleteFloorReferencePoint(id);
-            loadPoints();
+            loadPoints(form.ground_type);
           }}
           onAdd={async (fields) => {
-            await api.createFloorReferencePoint(fields);
-            loadPoints();
+            await api.createFloorReferencePoint({ ...fields, ground_type: form.ground_type });
+            loadPoints(form.ground_type);
           }}
         />
       </div>

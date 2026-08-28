@@ -409,6 +409,7 @@ function AttributeForm({ shape, ageBands, onAccept, onCancel }) {
     roof_type: "Pitched",
     has_loft: false,
     u_value: 0,
+    ground_type: "sand_or_gravel",
     thickness_m: 0.1,
     k_value: 1.63,
   });
@@ -474,6 +475,7 @@ function AttributeForm({ shape, ageBands, onAccept, onCancel }) {
         age_band_id: fields.age_band_id || null,
         area: shape.measurement,
         perimeter: shape.perimeter,
+        ground_type: fields.ground_type,
         thickness_m: parseFloat(fields.thickness_m) || 0.1,
         k_value: parseFloat(fields.k_value) || 1.63,
       });
@@ -553,6 +555,14 @@ function AttributeForm({ shape, ageBands, onAccept, onCancel }) {
         ) : (
           <>
             <label>
+              Ground type
+              <select value={fields.ground_type} onChange={set("ground_type")}>
+                <option value="clay_soil">Clay soil</option>
+                <option value="sand_or_gravel">Sand or gravel</option>
+                <option value="homogeneous_rock">Homogeneous rock</option>
+              </select>
+            </label>
+            <label>
               Floor thickness (m)
               <input type="number" step="any" value={fields.thickness_m} onChange={set("thickness_m")} />
             </label>
@@ -562,7 +572,7 @@ function AttributeForm({ shape, ageBands, onAccept, onCancel }) {
             </label>
             <p className="muted">
               Perimeter measured from the map: {shape.perimeter.toFixed(2)} m. U-value will be calculated
-              automatically from the area, perimeter, thickness and k-value.
+              automatically from the area, perimeter, ground type, thickness and k-value.
             </p>
           </>
         )}

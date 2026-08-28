@@ -6,11 +6,18 @@ from ..models import FloorUValueReferencePoint
 from ..validation import validate, error_response
 from . import api_bp
 
+GROUND_TYPES = ("clay_soil", "sand_or_gravel", "homogeneous_rock")
+DEFAULT_GROUND_TYPE = "sand_or_gravel"
+
 
 @api_bp.get("/floor-u-value/reference-points")
 def list_reference_points():
-    rows = FloorUValueReferencePoint.query.order_by(
-        FloorUValueReferencePoint.resistance, FloorUValueReferencePoint.p_a_ratio
+    ground_type = request.args.get("ground_type")
+    query = FloorUValueReferencePoint.query
+    if ground_type:
+        query = query.filter_by(ground_type=ground_type)
+    rows = query.order_by(
+        FloorUValueReferencePoint.ground_type, FloorUValueReferencePoint.resistance, FloorUValueReferencePoint.p_a_ratio
     ).all()
     return jsonify([r.to_dict() for r in rows])
 
@@ -29,7 +36,8 @@ def create_reference_point():
     if errors:
         return error_response(errors)
     row = FloorUValueReferencePoint(
-        p_a_ratio=data["p_a_ratio"], resistance=data["resistance"], u_value=data["u_value"]
+        ground_type=data.get("ground_type") or DEFAULT_GROUND_TYPE,
+        p_a_ratio=data["p_a_ratio"], resistance=data["resistance"], u_value=data["u_value"],
     )
     db.session.add(row)
     db.session.commit()
@@ -56,10 +64,15 @@ def calculate_floor_u_value():
     if errors:
         return error_response(errors)
 
+    ground_type = data.get("ground_type") or DEFAULT_GROUND_TYPE
+
     resistance = calc.floor_thermal_resistance(data["thickness_m"], data["k_value"])
     p_a_ratio = calc.floor_perimeter_area_ratio(data["perimeter_m"], data["area_m2"])
 
-    reference_points = [r.to_dict() for r in FloorUValueReferencePoint.query.all()]
+    reference_points = [
+        r.to_dict() for r in FloorUValueReferencePoint.query.filter_by(ground_type=ground_type).all()
+    ]
     result = calc.interpolate_floor_u_value(p_a_ratio, resistance, reference_points)
     result["thermal_resistance"] = resistance
+    result["ground_type"] = ground_type
     return jsonify(result)

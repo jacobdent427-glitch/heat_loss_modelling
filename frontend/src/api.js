@@ -54,7 +54,8 @@ export const api = {
   updateAgeBand: (id, data) => request(`/age-band-u-values/${id}`, { method: "PUT", body: JSON.stringify(data) }),
   deleteAgeBand: (id) => request(`/age-band-u-values/${id}`, { method: "DELETE" }),
 
-  listFloorReferencePoints: () => request("/floor-u-value/reference-points"),
+  listFloorReferencePoints: (groundType) =>
+    request(`/floor-u-value/reference-points${groundType ? `?ground_type=${encodeURIComponent(groundType)}` : ""}`),
   createFloorReferencePoint: (data) =>
     request("/floor-u-value/reference-points", { method: "POST", body: JSON.stringify(data) }),
   deleteFloorReferencePoint: (id) => request(`/floor-u-value/reference-points/${id}`, { method: "DELETE" }),

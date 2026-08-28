@@ -184,13 +184,49 @@ def test_create_floor_auto_calculates_u_value_from_area_and_perimeter(client, pl
 
 
 def test_create_floor_auto_calculates_using_default_construction_when_omitted(client, plant_room):
-    # thickness_m/k_value default to a typical concrete slab so area+perimeter alone is enough
+    # thickness_m/k_value/ground_type default to a typical concrete slab on sand or gravel
     res = client.post(f"/api/plant-rooms/{plant_room['id']}/floors", json={"location": "Ground", "area": 100, "perimeter": 5})
     assert res.status_code == 201
     body = res.get_json()
     assert body["u_value"] > 0
     assert body["thickness_m"] == 0.1
     assert body["k_value"] == 1.63
+    assert body["ground_type"] == "sand_or_gravel"
+
+
+def test_create_floor_ground_type_changes_calculated_u_value(client, plant_room):
+    clay = client.post(
+        f"/api/plant-rooms/{plant_room['id']}/floors",
+        json={"location": "Clay side", "area": 100, "perimeter": 40, "ground_type": "clay_soil"},
+    ).get_json()
+    rock = client.post(
+        f"/api/plant-rooms/{plant_room['id']}/floors",
+        json={"location": "Rock side", "area": 100, "perimeter": 40, "ground_type": "homogeneous_rock"},
+    ).get_json()
+    assert clay["u_value"] != rock["u_value"]
+
+
+def test_create_floor_different_ratios_calculate_different_u_values(client, plant_room):
+    compact = client.post(
+        f"/api/plant-rooms/{plant_room['id']}/floors",
+        json={"location": "Compact", "area": 109.05, "perimeter": 42.9},
+    ).get_json()
+    sprawling = client.post(
+        f"/api/plant-rooms/{plant_room['id']}/floors",
+        json={"location": "Sprawling", "area": 493.61, "perimeter": 103.28},
+    ).get_json()
+    assert compact["u_value"] != sprawling["u_value"]
+
+
+def test_update_floor_ground_type_recalculates_u_value(client, plant_room):
+    floor = client.post(
+        f"/api/plant-rooms/{plant_room['id']}/floors", json={"location": "Ground", "area": 100, "perimeter": 40}
+    ).get_json()
+    sand_u_value = floor["u_value"]
+
+    res = client.put(f"/api/floors/{floor['id']}", json={"ground_type": "homogeneous_rock"})
+    assert res.status_code == 200
+    assert res.get_json()["u_value"] != sand_u_value
 
 
 def test_create_floor_without_perimeter_leaves_u_value_unset(client, plant_room):

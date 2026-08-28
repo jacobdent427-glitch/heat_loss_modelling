@@ -167,6 +167,7 @@ class EmissionFactor(db.Model):
 
 class FloorUValueReferencePoint(db.Model):
     id = db.Column(db.Integer, primary_key=True)
+    ground_type = db.Column(db.String(30), nullable=False, default="sand_or_gravel")
     p_a_ratio = db.Column(db.Float, nullable=False)
     resistance = db.Column(db.Float, nullable=False)
     u_value = db.Column(db.Float, nullable=False)
@@ -174,6 +175,7 @@ class FloorUValueReferencePoint(db.Model):
     def to_dict(self):
         return {
             "id": self.id,
+            "ground_type": self.ground_type,
             "p_a_ratio": self.p_a_ratio,
             "resistance": self.resistance,
             "u_value": self.u_value,
@@ -350,6 +352,7 @@ class FloorElement(db.Model):
     reference = db.Column(db.String(200))
     area = db.Column(db.Float, default=0.0)
     perimeter = db.Column(db.Float)
+    ground_type = db.Column(db.String(30), default="sand_or_gravel")
     thickness_m = db.Column(db.Float, default=0.1)
     k_value = db.Column(db.Float, default=1.63)
     age_band_id = db.Column(db.Integer, db.ForeignKey("age_band_u_value.id"))
@@ -371,6 +374,7 @@ class FloorElement(db.Model):
             "reference": self.reference,
             "area": self.area,
             "perimeter": self.perimeter,
+            "ground_type": self.ground_type,
             "thickness_m": self.thickness_m,
             "k_value": self.k_value,
             "age_band_id": self.age_band_id,

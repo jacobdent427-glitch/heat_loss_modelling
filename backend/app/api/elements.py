@@ -24,8 +24,8 @@ ELEMENT_TYPES = {
         "proposed_u_value", "measure_id", "notes",
     ]),
     "floors": (FloorElement, [
-        "location", "construction", "reference", "area", "perimeter", "thickness_m", "k_value", "age_band_id",
-        "u_value", "proposed_u_value", "measure_id", "geometry", "notes",
+        "location", "construction", "reference", "area", "perimeter", "ground_type", "thickness_m", "k_value",
+        "age_band_id", "u_value", "proposed_u_value", "measure_id", "geometry", "notes",
     ]),
     "doors": (DoorElement, [
         "location", "construction", "reference", "door_type", "height", "width", "qty", "age_band_id", "u_value",
@@ -67,19 +67,22 @@ VALIDATION_RULES = {
     ),
 }
 
-FLOOR_U_VALUE_INPUTS = {"area", "perimeter", "thickness_m", "k_value"}
+FLOOR_U_VALUE_INPUTS = {"area", "perimeter", "ground_type", "thickness_m", "k_value"}
 DEFAULT_FLOOR_THICKNESS_M = 0.1
 DEFAULT_FLOOR_K_VALUE = 1.63
+DEFAULT_FLOOR_GROUND_TYPE = "sand_or_gravel"
 
 
 def _autocalc_floor_u_value(row, touched_fields):
     if not (touched_fields & FLOOR_U_VALUE_INPUTS):
         return
-    if not (row.area and row.perimeter and row.thickness_m and row.k_value):
+    if not (row.area and row.perimeter and row.ground_type and row.thickness_m and row.k_value):
         return
     resistance = calc.floor_thermal_resistance(row.thickness_m, row.k_value)
     p_a_ratio = calc.floor_perimeter_area_ratio(row.perimeter, row.area)
-    reference_points = [r.to_dict() for r in FloorUValueReferencePoint.query.all()]
+    reference_points = [
+        r.to_dict() for r in FloorUValueReferencePoint.query.filter_by(ground_type=row.ground_type).all()
+    ]
     result = calc.interpolate_floor_u_value(p_a_ratio, resistance, reference_points)
     if result.get("u_value") is not None:
         row.u_value = result["u_value"]
@@ -125,7 +128,9 @@ def create_element(room_id, element_type):
             row.thickness_m = DEFAULT_FLOOR_THICKNESS_M
         if row.k_value is None:
             row.k_value = DEFAULT_FLOOR_K_VALUE
-        _autocalc_floor_u_value(row, (set(data.keys()) & FLOOR_U_VALUE_INPUTS) | {"thickness_m", "k_value"})
+        if row.ground_type is None:
+            row.ground_type = DEFAULT_FLOOR_GROUND_TYPE
+        _autocalc_floor_u_value(row, (set(data.keys()) & FLOOR_U_VALUE_INPUTS) | {"thickness_m", "k_value", "ground_type"})
 
     db.session.add(row)
     db.session.commit()
