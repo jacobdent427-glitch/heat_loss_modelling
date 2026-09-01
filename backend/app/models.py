@@ -50,7 +50,18 @@ class PlantRoom(db.Model):
     boiler_efficiency = db.Column(db.Float, default=0.85)
 
     uses_gas_kitchen = db.Column(db.Boolean, default=False)
+    kitchen_gas_method = db.Column(db.String(20), default="percentage")  # percentage | calculated
     kitchen_gas_pct = db.Column(db.Float, default=0.02)
+    kitchen_hobs = db.Column(db.Float)
+    kitchen_hours_per_day = db.Column(db.Float)
+
+    uses_gas_science_lab = db.Column(db.Boolean, default=False)
+    lab_gas_method = db.Column(db.String(20), default="percentage")  # percentage | calculated
+    science_lab_gas_pct = db.Column(db.Float, default=0.03)
+    lab_count = db.Column(db.Float)
+    lab_burners_per_lab = db.Column(db.Float)
+    lab_uses_per_day = db.Column(db.Float)
+    lab_bunsen_kwh = db.Column(db.Float)
 
     dhw_method = db.Column(db.String(30), default="manual")
     dhw_manual_kwh = db.Column(db.Float, default=0.0)
@@ -86,7 +97,17 @@ class PlantRoom(db.Model):
             "standing_charge_per_day": self.standing_charge_per_day,
             "boiler_efficiency": self.boiler_efficiency,
             "uses_gas_kitchen": self.uses_gas_kitchen,
+            "kitchen_gas_method": self.kitchen_gas_method,
             "kitchen_gas_pct": self.kitchen_gas_pct,
+            "kitchen_hobs": self.kitchen_hobs,
+            "kitchen_hours_per_day": self.kitchen_hours_per_day,
+            "uses_gas_science_lab": self.uses_gas_science_lab,
+            "lab_gas_method": self.lab_gas_method,
+            "science_lab_gas_pct": self.science_lab_gas_pct,
+            "lab_count": self.lab_count,
+            "lab_burners_per_lab": self.lab_burners_per_lab,
+            "lab_uses_per_day": self.lab_uses_per_day,
+            "lab_bunsen_kwh": self.lab_bunsen_kwh,
             "dhw_method": self.dhw_method,
             "dhw_manual_kwh": self.dhw_manual_kwh,
             "dhw_summer_baseload_kwh_month": self.dhw_summer_baseload_kwh_month,

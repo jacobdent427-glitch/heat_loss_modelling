@@ -8,9 +8,12 @@ from . import api_bp
 
 PLANT_ROOM_FIELDS = [
     "name", "fuel_type", "annual_fuel_usage_kwh", "unit_rate_per_kwh", "standing_charge_per_day",
-    "boiler_efficiency", "uses_gas_kitchen", "kitchen_gas_pct", "dhw_method", "dhw_manual_kwh",
-    "dhw_summer_baseload_kwh_month", "dhw_tank_volume_litres", "dhw_tank_temp_rise_c",
-    "dhw_tank_cycles_per_day", "dhw_efficiency", "ach", "internal_setpoint_c",
+    "boiler_efficiency",
+    "uses_gas_kitchen", "kitchen_gas_method", "kitchen_gas_pct", "kitchen_hobs", "kitchen_hours_per_day",
+    "uses_gas_science_lab", "lab_gas_method", "science_lab_gas_pct",
+    "lab_count", "lab_burners_per_lab", "lab_uses_per_day", "lab_bunsen_kwh",
+    "dhw_method", "dhw_manual_kwh", "dhw_summer_baseload_kwh_month", "dhw_tank_volume_litres",
+    "dhw_tank_temp_rise_c", "dhw_tank_cycles_per_day", "dhw_efficiency", "ach", "internal_setpoint_c",
     "external_design_temp_c", "notes",
 ]
 
@@ -19,8 +22,10 @@ PLANT_ROOM_VALIDATION = dict(
         "annual_fuel_usage_kwh", "unit_rate_per_kwh", "standing_charge_per_day", "dhw_manual_kwh",
         "dhw_summer_baseload_kwh_month", "dhw_tank_volume_litres", "dhw_tank_temp_rise_c",
         "dhw_tank_cycles_per_day", "ach",
+        "kitchen_hobs", "kitchen_hours_per_day",
+        "lab_count", "lab_burners_per_lab", "lab_uses_per_day", "lab_bunsen_kwh",
     ],
-    fraction_if_set=["boiler_efficiency", "kitchen_gas_pct", "dhw_efficiency"],
+    fraction_if_set=["boiler_efficiency", "kitchen_gas_pct", "science_lab_gas_pct", "dhw_efficiency"],
 )
 
 

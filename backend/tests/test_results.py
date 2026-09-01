@@ -98,3 +98,96 @@ def test_dhw_manual_method_included_in_space_heating(client, plant_room):
     res = client.get(f"/api/plant-rooms/{plant_room['id']}/results").get_json()
     assert res["energy_usage"]["dhw_kwh"] == 2000
     assert res["energy_usage"]["space_heating_kwh"] == 8000
+
+
+def test_kitchen_gas_calculated_method(client, plant_room):
+    client.put(
+        f"/api/plant-rooms/{plant_room['id']}",
+        json={
+            "annual_fuel_usage_kwh": 10000,
+            "uses_gas_kitchen": True, "kitchen_gas_method": "calculated",
+            "kitchen_hobs": 4, "kitchen_hours_per_day": 2,
+        },
+    )
+    res = client.get(f"/api/plant-rooms/{plant_room['id']}/results").get_json()
+    expected = 190 * 4 * 2 * 0.182932
+    assert res["energy_usage"]["kitchen_kwh"] == pytest.approx(expected)
+    assert res["energy_usage"]["space_heating_kwh"] == pytest.approx(10000 - expected)
+
+
+def test_kitchen_gas_calculated_method_ignores_percentage_field(client, plant_room):
+    client.put(
+        f"/api/plant-rooms/{plant_room['id']}",
+        json={
+            "annual_fuel_usage_kwh": 10000,
+            "uses_gas_kitchen": True, "kitchen_gas_method": "calculated", "kitchen_gas_pct": 0.5,
+            "kitchen_hobs": 4, "kitchen_hours_per_day": 2,
+        },
+    )
+    res = client.get(f"/api/plant-rooms/{plant_room['id']}/results").get_json()
+    expected = 190 * 4 * 2 * 0.182932
+    assert res["energy_usage"]["kitchen_kwh"] == pytest.approx(expected)
+
+
+def test_science_lab_gas_calculated_method(client, plant_room):
+    client.put(
+        f"/api/plant-rooms/{plant_room['id']}",
+        json={
+            "annual_fuel_usage_kwh": 10000,
+            "uses_gas_science_lab": True, "lab_gas_method": "calculated",
+            "lab_count": 3, "lab_burners_per_lab": 8, "lab_uses_per_day": 2, "lab_bunsen_kwh": 0.5,
+        },
+    )
+    res = client.get(f"/api/plant-rooms/{plant_room['id']}/results").get_json()
+    expected = 190 * 3 * 8 * 2 * 0.5
+    assert res["energy_usage"]["lab_kwh"] == pytest.approx(expected)
+    assert res["energy_usage"]["space_heating_kwh"] == pytest.approx(10000 - expected)
+
+
+def test_science_lab_gas_deducted_from_space_heating(client, plant_room):
+    client.put(
+        f"/api/plant-rooms/{plant_room['id']}",
+        json={"annual_fuel_usage_kwh": 10000, "uses_gas_science_lab": True, "science_lab_gas_pct": 0.05},
+    )
+    res = client.get(f"/api/plant-rooms/{plant_room['id']}/results").get_json()
+    assert res["energy_usage"]["lab_kwh"] == 500
+    assert res["energy_usage"]["space_heating_kwh"] == 9500
+
+
+def test_science_lab_gas_ignored_when_toggle_off(client, plant_room):
+    client.put(
+        f"/api/plant-rooms/{plant_room['id']}",
+        json={"annual_fuel_usage_kwh": 10000, "uses_gas_science_lab": False, "science_lab_gas_pct": 0.05},
+    )
+    res = client.get(f"/api/plant-rooms/{plant_room['id']}/results").get_json()
+    assert res["energy_usage"]["lab_kwh"] == 0.0
+    assert res["energy_usage"]["space_heating_kwh"] == 10000
+
+
+def test_kitchen_and_science_lab_gas_both_deducted(client, plant_room):
+    client.put(
+        f"/api/plant-rooms/{plant_room['id']}",
+        json={
+            "annual_fuel_usage_kwh": 10000,
+            "uses_gas_kitchen": True, "kitchen_gas_pct": 0.02,
+            "uses_gas_science_lab": True, "science_lab_gas_pct": 0.05,
+        },
+    )
+    res = client.get(f"/api/plant-rooms/{plant_room['id']}/results").get_json()
+    assert res["energy_usage"]["kitchen_kwh"] == 200
+    assert res["energy_usage"]["lab_kwh"] == 500
+    assert res["energy_usage"]["space_heating_kwh"] == 9300
+
+
+def test_science_lab_gas_excluded_from_summer_baseload_dhw_estimate(client, plant_room):
+    client.put(
+        f"/api/plant-rooms/{plant_room['id']}",
+        json={
+            "annual_fuel_usage_kwh": 10000,
+            "dhw_method": "summer_baseload", "dhw_summer_baseload_kwh_month": 500,
+            "uses_gas_science_lab": True, "science_lab_gas_pct": 0.05,
+        },
+    )
+    res = client.get(f"/api/plant-rooms/{plant_room['id']}/results").get_json()
+    # 500 * 12 - (10000 * 0.05) = 5500
+    assert res["energy_usage"]["dhw_kwh"] == 5500

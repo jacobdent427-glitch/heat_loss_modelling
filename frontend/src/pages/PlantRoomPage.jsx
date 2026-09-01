@@ -557,10 +557,86 @@ function SettingsTab({ room, onSave }) {
           <input type="checkbox" checked={!!form.uses_gas_kitchen} onChange={setAndCommitCheckbox("uses_gas_kitchen")} />
           Kitchen uses gas
         </label>
-        <label>
-          Assumed kitchen gas usage (% of annual, 0-1)
-          <input type="number" step="any" value={form.kitchen_gas_pct ?? ""} onChange={set("kitchen_gas_pct")} onBlur={() => commit()} />
+        {form.uses_gas_kitchen && (
+          <>
+            <label>
+              Kitchen gas method
+              <select
+                value={form.kitchen_gas_method || "percentage"}
+                onChange={(e) => {
+                  setForm((prev) => ({ ...prev, kitchen_gas_method: e.target.value }));
+                  commit({ kitchen_gas_method: e.target.value });
+                }}
+              >
+                <option value="percentage">Percentage of annual usage</option>
+                <option value="calculated">Calculated from hobs</option>
+              </select>
+            </label>
+            {form.kitchen_gas_method === "calculated" ? (
+              <>
+                <label>
+                  Number of hobs
+                  <input type="number" step="any" value={form.kitchen_hobs ?? ""} onChange={set("kitchen_hobs")} onBlur={() => commit()} />
+                </label>
+                <label>
+                  Hours used per day
+                  <input type="number" step="any" value={form.kitchen_hours_per_day ?? ""} onChange={set("kitchen_hours_per_day")} onBlur={() => commit()} />
+                </label>
+              </>
+            ) : (
+              <label>
+                Assumed kitchen gas usage (% of annual, 0-1)
+                <input type="number" step="any" value={form.kitchen_gas_pct ?? ""} onChange={set("kitchen_gas_pct")} onBlur={() => commit()} />
+              </label>
+            )}
+          </>
+        )}
+        <label className="checkbox-label">
+          <input type="checkbox" checked={!!form.uses_gas_science_lab} onChange={setAndCommitCheckbox("uses_gas_science_lab")} />
+          Science labs use gas
         </label>
+        {form.uses_gas_science_lab && (
+          <>
+            <label>
+              Science lab gas method
+              <select
+                value={form.lab_gas_method || "percentage"}
+                onChange={(e) => {
+                  setForm((prev) => ({ ...prev, lab_gas_method: e.target.value }));
+                  commit({ lab_gas_method: e.target.value });
+                }}
+              >
+                <option value="percentage">Percentage of annual usage</option>
+                <option value="calculated">Calculated from bunsen burners</option>
+              </select>
+            </label>
+            {form.lab_gas_method === "calculated" ? (
+              <>
+                <label>
+                  Number of labs
+                  <input type="number" step="any" value={form.lab_count ?? ""} onChange={set("lab_count")} onBlur={() => commit()} />
+                </label>
+                <label>
+                  Burners per lab
+                  <input type="number" step="any" value={form.lab_burners_per_lab ?? ""} onChange={set("lab_burners_per_lab")} onBlur={() => commit()} />
+                </label>
+                <label>
+                  Uses per day
+                  <input type="number" step="any" value={form.lab_uses_per_day ?? ""} onChange={set("lab_uses_per_day")} onBlur={() => commit()} />
+                </label>
+                <label>
+                  kWh per burner use
+                  <input type="number" step="any" value={form.lab_bunsen_kwh ?? ""} onChange={set("lab_bunsen_kwh")} onBlur={() => commit()} />
+                </label>
+              </>
+            ) : (
+              <label>
+                Assumed science lab gas usage (% of annual, 0-1)
+                <input type="number" step="any" value={form.science_lab_gas_pct ?? ""} onChange={set("science_lab_gas_pct")} onBlur={() => commit()} />
+              </label>
+            )}
+          </>
+        )}
       </fieldset>
 
       <fieldset>
@@ -724,6 +800,10 @@ function ResultsTab({ results, onRefresh }) {
           <tr>
             <td>Kitchen usage</td>
             <td>{fmt(results.energy_usage.kitchen_kwh, 0)} kWh</td>
+          </tr>
+          <tr>
+            <td>Science lab usage</td>
+            <td>{fmt(results.energy_usage.lab_kwh, 0)} kWh</td>
           </tr>
           <tr>
             <td>Space heating usage</td>

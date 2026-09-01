@@ -67,6 +67,22 @@ def test_update_plant_room_valid_fraction_accepted(client, plant_room):
     assert res.get_json()["kitchen_gas_pct"] == 0.05
 
 
+def test_update_plant_room_science_lab_gas_pct_over_one_rejected(client, plant_room):
+    res = client.put(f"/api/plant-rooms/{plant_room['id']}", json={"science_lab_gas_pct": 1.5})
+    assert res.status_code == 400
+    assert "science_lab_gas_pct" in res.get_json()["errors"]
+
+
+def test_update_plant_room_science_lab_gas_settings(client, plant_room):
+    res = client.put(
+        f"/api/plant-rooms/{plant_room['id']}", json={"uses_gas_science_lab": True, "science_lab_gas_pct": 0.04}
+    )
+    assert res.status_code == 200
+    body = res.get_json()
+    assert body["uses_gas_science_lab"] is True
+    assert body["science_lab_gas_pct"] == 0.04
+
+
 def test_delete_plant_room(client, plant_room):
     res = client.delete(f"/api/plant-rooms/{plant_room['id']}")
     assert res.status_code == 204

@@ -119,9 +119,31 @@ def test_kitchen_gas_usage_kwh():
     assert calc.kitchen_gas_usage_kwh(1000, 0.02) == pytest.approx(20.0)
 
 
+def test_science_lab_gas_usage_kwh():
+    assert calc.science_lab_gas_usage_kwh(1000, 0.03) == pytest.approx(30.0)
+
+
+def test_kitchen_gas_usage_calc_kwh():
+    expected = 190 * 4 * 2 * 0.182932
+    assert calc.kitchen_gas_usage_calc_kwh(4, 2) == pytest.approx(expected)
+
+
+def test_science_lab_gas_usage_calc_kwh():
+    expected = 190 * 3 * 8 * 2 * 0.5
+    assert calc.science_lab_gas_usage_calc_kwh(0.5, 3, 8, 2) == pytest.approx(expected)
+
+
 def test_space_heating_gas_usage_kwh_never_negative():
     assert calc.space_heating_gas_usage_kwh(100, 80, 50) == 0.0
     assert calc.space_heating_gas_usage_kwh(1000, 100, 20) == pytest.approx(880.0)
+
+
+def test_space_heating_gas_usage_kwh_subtracts_kitchen_and_lab():
+    assert calc.space_heating_gas_usage_kwh(1000, 100, 20, 30) == pytest.approx(850.0)
+
+
+def test_dhw_summer_baseload_kwh_subtracts_kitchen_and_lab():
+    assert calc.dhw_summer_baseload_kwh(100, kitchen_kwh=50, lab_kwh=30) == pytest.approx(1120.0)
 
 
 def test_pct_heat_loss_reduction():

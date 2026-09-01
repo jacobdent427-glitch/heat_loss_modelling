@@ -94,8 +94,8 @@ def interpolate_floor_u_value(p_a_ratio: float, resistance: float, reference_poi
     return {"u_value": round(u_value, 4), "r_lo": r_lo, "r_hi": r_hi, "p_a_ratio": p_a_ratio, "resistance": resistance}
 
 
-def dhw_summer_baseload_kwh(monthly_baseload_kwh: float, kitchen_kwh: float = 0.0) -> float:
-    return monthly_baseload_kwh * 12 - kitchen_kwh
+def dhw_summer_baseload_kwh(monthly_baseload_kwh: float, kitchen_kwh: float = 0.0, lab_kwh: float = 0.0) -> float:
+    return monthly_baseload_kwh * 12 - kitchen_kwh - lab_kwh
 
 
 def dhw_tank_size_kwh(tank_volume_litres: float, temp_rise_c: float, cycles_per_day: float, efficiency: float) -> float:
@@ -108,8 +108,22 @@ def kitchen_gas_usage_kwh(total_annual_kwh: float, kitchen_pct: float) -> float:
     return total_annual_kwh * kitchen_pct
 
 
-def space_heating_gas_usage_kwh(total_annual_kwh: float, dhw_kwh: float, kitchen_kwh: float = 0.0) -> float:
-    return max(total_annual_kwh - dhw_kwh - kitchen_kwh, 0.0)
+def kitchen_gas_usage_calc_kwh(total_hobs: float, hours_used_per_day: float) -> float:
+    return 190 * total_hobs * hours_used_per_day * 0.182932  # assumed to be on medium heat for an hour
+
+
+def science_lab_gas_usage_kwh(total_annual_kwh: float, lab_pct: float) -> float:
+    return total_annual_kwh * lab_pct
+
+
+def science_lab_gas_usage_calc_kwh(
+    bunsen_burner_heat_usage_kwh: float, number_of_labs: float, number_of_burners_per_lab: float, number_of_times_per_day: float
+) -> float:
+    return 190 * number_of_labs * number_of_burners_per_lab * number_of_times_per_day * bunsen_burner_heat_usage_kwh
+
+
+def space_heating_gas_usage_kwh(total_annual_kwh: float, dhw_kwh: float, kitchen_kwh: float = 0.0, lab_kwh: float = 0.0) -> float:
+    return max(total_annual_kwh - dhw_kwh - kitchen_kwh - lab_kwh, 0.0)
 
 
 def pct_heat_loss_reduction(existing_ua: float, improved_ua: float, total_existing_hlc: float) -> float:

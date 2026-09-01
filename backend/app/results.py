@@ -6,14 +6,30 @@ def _prop(proposed, existing):
     return proposed if proposed is not None else existing
 
 
+def _kitchen_kwh(plant_room):
+    if not plant_room.uses_gas_kitchen:
+        return 0.0
+    if plant_room.kitchen_gas_method == "calculated":
+        return calc.kitchen_gas_usage_calc_kwh(plant_room.kitchen_hobs or 0.0, plant_room.kitchen_hours_per_day or 0.0)
+    return calc.kitchen_gas_usage_kwh(plant_room.annual_fuel_usage_kwh, plant_room.kitchen_gas_pct)
+
+
+def _lab_kwh(plant_room):
+    if not plant_room.uses_gas_science_lab:
+        return 0.0
+    if plant_room.lab_gas_method == "calculated":
+        return calc.science_lab_gas_usage_calc_kwh(
+            plant_room.lab_bunsen_kwh or 0.0, plant_room.lab_count or 0.0,
+            plant_room.lab_burners_per_lab or 0.0, plant_room.lab_uses_per_day or 0.0,
+        )
+    return calc.science_lab_gas_usage_kwh(plant_room.annual_fuel_usage_kwh, plant_room.science_lab_gas_pct)
+
+
 def _dhw_kwh(plant_room):
     if plant_room.dhw_method == "summer_baseload" and plant_room.dhw_summer_baseload_kwh_month is not None:
-        kitchen_kwh = (
-            calc.kitchen_gas_usage_kwh(plant_room.annual_fuel_usage_kwh, plant_room.kitchen_gas_pct)
-            if plant_room.uses_gas_kitchen
-            else 0.0
+        return calc.dhw_summer_baseload_kwh(
+            plant_room.dhw_summer_baseload_kwh_month, _kitchen_kwh(plant_room), _lab_kwh(plant_room)
         )
-        return calc.dhw_summer_baseload_kwh(plant_room.dhw_summer_baseload_kwh_month, kitchen_kwh)
     if plant_room.dhw_method == "tank_size" and plant_room.dhw_tank_volume_litres:
         return calc.dhw_tank_size_kwh(
             plant_room.dhw_tank_volume_litres,
@@ -150,12 +166,9 @@ def plant_room_results(plant_room):
     peak_improved_kw = calc.peak_heat_loss_kw(hlc_improved, plant_room.internal_setpoint_c, plant_room.external_design_temp_c)
 
     dhw_kwh = _dhw_kwh(plant_room)
-    kitchen_kwh = (
-        calc.kitchen_gas_usage_kwh(plant_room.annual_fuel_usage_kwh, plant_room.kitchen_gas_pct)
-        if plant_room.uses_gas_kitchen
-        else 0.0
-    )
-    space_heating_kwh = calc.space_heating_gas_usage_kwh(plant_room.annual_fuel_usage_kwh, dhw_kwh, kitchen_kwh)
+    kitchen_kwh = _kitchen_kwh(plant_room)
+    lab_kwh = _lab_kwh(plant_room)
+    space_heating_kwh = calc.space_heating_gas_usage_kwh(plant_room.annual_fuel_usage_kwh, dhw_kwh, kitchen_kwh, lab_kwh)
     unit_rate, emission_factor = _resolve_rates(plant_room)
 
     measure_groups = {}
@@ -220,6 +233,7 @@ def plant_room_results(plant_room):
             "annual_fuel_usage_kwh": plant_room.annual_fuel_usage_kwh,
             "dhw_kwh": dhw_kwh,
             "kitchen_kwh": kitchen_kwh,
+            "lab_kwh": lab_kwh,
             "space_heating_kwh": space_heating_kwh,
             "unit_rate_per_kwh": unit_rate,
             "emission_factor_kg_per_kwh": emission_factor,
